@@ -14,6 +14,7 @@ class FractionalTransport:
 
         geom_df = pd.read_csv('Input_data/hydraulic_geometry.csv')
         d_df = pd.read_csv('Input_data/grain_size.csv')
+        q_df = pd.read_csv('Input_data/discharge.csv') # do I make this a table you add to, ie has stream name, or you just fill out every time...?
 
         # pull the selected stream id from the hydraulic geometry csv
         if stream_id not in geom_df.stream_id.unique():
@@ -27,6 +28,28 @@ class FractionalTransport:
         else:
             self.d_df = d_df[d_df['stream_id'] == stream_id]
 
+        self.d50 = np.percentile(self.d_df, 50)
+        self.d84 = np.percentile(self.d_df, 84)
+        self.d_fractions = self.grain_sizes()
+
+    def grain_sizes(self):
+        # set up output dictionary which associates a fraction value with each size range
+        d_dict = {}
+
+        # set up the size ranges
+        intervals = [[0,0.5],[0.5,1],[1,2],[2,4],[4,6],[6,8],[8,12],[12,16],[16,24],[24,32],[32,48],[48,64],[64,96],[96,128],
+                     [128,192],[192,256]]
+
+        # append values to the dictionary
+        for i in intervals:
+            count = 0
+            for d in self.d_df:
+                if i[0] < d <= i[1]:
+                    count += 1
+            d_dict[str(i)] = count/len(self.d_df)
+
+        return d_dict # dictionary {half phi: fraction}
+
     # use function with hydraulic geometry data to come up with relationship width as function of depth
     def calc_width_params(self):
         x_data = np.array(self.geom_df['h']).reshape(-1,1)
@@ -36,6 +59,11 @@ class FractionalTransport:
         print('depth-width R2: ', str(lr.score(x_data, y_data)))
 
         return lr.coef_, lr.intercept_
+
+    def ferguson_vpe(self, h, s):
+        
+        v_est = ((6.5*(h/self.d84)) / (((h/self.d84)**(5/3)+(6.5/2.5)**2)**0.5))*(9.81*h*s)**0.5
+        return v_est
 
     # use function to find D50 and Fi for each size class i from grain size data
 
