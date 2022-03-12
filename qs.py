@@ -11,10 +11,14 @@ class FractionalTransport:
     """
 
     def __init__(self, stream_id, reach_slope):
+        """
+        Calculates fractional bedload transport rates using the dynamic shear stress partitioning approach of Gilbert
+        :param stream_id: The name of the stream in the input data tables (str)
+        :param reach_slope: The reach averaged slope - unitless e.g., m/m - (float)
+        """
 
         geom_df = pd.read_csv('Input_data/hydraulic_geometry.csv')
         d_df = pd.read_csv('Input_data/grain_size.csv')
-        # q_df = pd.read_csv('Input_data/discharge.csv') # do I make this a table you add to, ie has stream name, or you just fill out every time...?
 
         # pull the selected stream id from the hydraulic geometry csv
         if stream_id not in geom_df.stream_id.unique():
@@ -45,8 +49,14 @@ class FractionalTransport:
         self.w_coef, self.w_intercept = self.width_from_depth_params()
 
         # set up output table - columns:
+        self.out_df = pd.DataFrame(columns=['Q', 'D', 'qb'])
 
     def grain_sizes(self):
+        """
+        creates a dictionary with each grain size range and the fraction of the bed in each bin
+        :return:
+        """
+
         # set up output dictionary which associates a fraction value with each size range
         d_dict = {}
 
@@ -62,12 +72,18 @@ class FractionalTransport:
                     count += 1
             d_dict[i[0]] = count/len(self.d_df)
 
-        return d_dict  # dictionary {half phi: fraction}
+        return d_dict
 
     # use function with hydraulic geometry data to come up with relationship width as function of depth
     # this (as is now) assumes a linear relationship between width and depth (instead of choosing between log and exp)
     def width_from_depth_params(self): # maybe change to do two types of regression compare r2 and use the better
-        x_data = np.array(self.geom_df['h']).reshape(-1,1)
+        """
+        comes up with the coefficient and intercept for a linear regression of width as a function depth
+        (from measurements)
+        :return:
+        """
+
+        x_data = np.array(self.geom_df['h']).reshape(-1, 1)
         y_data = np.array(self.geom_df['w'])
         lr = LinearRegression()
         lr.fit(x_data, y_data)
@@ -76,16 +92,31 @@ class FractionalTransport:
         return lr.coef_, lr.intercept_
 
     def calc_w_from_h(self, h):
+        """
+        Calculate channel width as a function of depth based on calculated parameters
+        :param h: average flow depth
+        :return:
+        """
 
         return self.w_coef*h+self.w_intercept
 
     def ferguson_vpe(self, h):
+        """
+        The Ferguson variable power flow resistance function; is used to create an initial flow velocity estimate
+        for the optimization that calculates depth (h_i)
+        :param h: average flow depth
+        :return:
+        """
 
         v_est = ((6.5*(h/self.d84)) / (((h/self.d84)**(5/3)+(6.5/2.5)**2)**0.5))*(9.81*h*self.s)**0.5
         return v_est
 
     def h_from_q_params(self):
-        q = np.array(self.geom_df['Q']).reshape(-1,1)
+        """
+        Finds the linear regression parameters to calculate depth as a function of discharge (from measurements)
+        :return:
+        """
+        q = np.array(self.geom_df['Q']).reshape(-1, 1)
         h = np.array(10**self.geom_df['h'])
         lr = LinearRegression()
         lr.fit(q, h)
@@ -94,6 +125,11 @@ class FractionalTransport:
         return lr.coef_, lr.intercept_
 
     def calc_h_from_q(self, q):
+        """
+        Calculates average flow depth as a function of discharge using calculated parameters
+        :param q: discharge
+        :return:
+        """
 
         return np.log(self.h_coef*q+self.h_intercept)
 
@@ -105,7 +141,6 @@ class FractionalTransport:
 
         return (9810*h_i*self.s)/(1.65*9.81*d)
 
-    # UPDATE THESE FUNCTIONS FOR USE IN THIS CLASS
     def err(self, v, d, q_obs):
         h = d ** 0.25 * ((v ** 1.5 / (9.81 * self.s) ** 0.75) / 22.627)
         w = self.calc_w_from_h(h)
@@ -123,6 +158,10 @@ class FractionalTransport:
         return h_adj
 
     def find_fractional_transport(self):
+        """
+        Finds fractional transport rates for each fraction in the bed for each flow in the discharge table
+        :return:
+        """
 
         for i in self. q_df.index:
             q = self.q_df.loc[i, 'Q']
@@ -136,12 +175,15 @@ class FractionalTransport:
                     ratio = 0
                 if ratio < 2:
                     wi_star = 0.0008*ratio**7.5
-                elif ratio >= 2:
+                else:
                     wi_star = 14*(1-(1.11/ratio**0.8))**4.5
 
                 # convert from wi_star to qs
-                
+                qb = (wi_star*self.d_fractions[d]*(9.81*h*self.s)**(3/2)) / (1.65*9.81)
 
+                # add result to output table
+                df = pd.DataFrame([q, d, qb], columns=['Q', 'D', 'qb'])
+                self.out_df.append(df)
 
 
 
