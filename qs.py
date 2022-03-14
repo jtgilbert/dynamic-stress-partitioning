@@ -3,6 +3,8 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
 from sklearn.linear_model import LinearRegression
+from datetime import datetime
+import os
 
 
 class FractionalTransport:
@@ -22,7 +24,7 @@ class FractionalTransport:
 
         # pull the selected stream id from the hydraulic geometry csv
         if stream_id not in geom_df.stream_id.unique():
-            raise Exception('stream id: {} does not exist in hydraulic_geometry.csv'.format(stream_id))
+            raise Exception('stream_id: {} does not exist in hydraulic_geometry.csv'.format(stream_id))
         else:
             self.geom_df = geom_df[geom_df['stream_id'] == stream_id]
 
@@ -38,18 +40,38 @@ class FractionalTransport:
         self.s = reach_slope
 
         # Calculate grain size characteristics
-        self.d50 = np.percentile(self.d_df, 50)
-        self.d84 = np.percentile(self.d_df, 84)
+        self.d50 = np.percentile(self.d_df.D, 50)
+        self.d84 = np.percentile(self.d_df.D, 84)
+
+        # set up a log file
+        path = os.getcwd()
+        metatxt = path + '/Outputs/{}_log.txt'.format(stream_id)
+        self.md = open(metatxt, 'w+')
+        init_lines = ['Fractional transport rates calculated for stream: {} using Gilbert dynamic shear stress '
+                      'partitioning method \n \n'.format(stream_id),
+                      'Reach-average slope: {} \n'.format(str(reach_slope)),
+                      'Median grain size (D50): {} \n'.format(str(self.d50)),
+                      'D84: {} \n'.format(str(self.d84))]
+        self.md.writelines(init_lines)
+
+        # get proportion for each grain size fraction
         self.d_fractions = self.grain_sizes()
 
         # To be able to calculate depth for each discharge (used to get V0)
-        self.h_coef, self.h_intercept = self.h_from_q_params()
+        self.h_coef, self.h_exponent = self.h_from_q_params()
 
         # to find width for any depth
         self.w_coef, self.w_intercept = self.width_from_depth_params()
 
         # set up output table - columns:
         self.out_df = pd.DataFrame(columns=['Q', 'D', 'qb'])
+
+        # run calculations
+        self.find_fractional_transport()
+
+        # save output table
+        self.out_df.to_csv('Outputs/{}_qb.csv'.format(stream_id))
+        self.md.close()
 
     def grain_sizes(self):
         """
@@ -72,6 +94,8 @@ class FractionalTransport:
                     count += 1
             d_dict[i[0]] = count/len(self.d_df)
 
+        self.md.writelines('grain size fractions: {} \n'.format(str(d_dict)))
+
         return d_dict
 
     # use function with hydraulic geometry data to come up with relationship width as function of depth
@@ -88,6 +112,8 @@ class FractionalTransport:
         lr = LinearRegression()
         lr.fit(x_data, y_data)
         print('depth-width R2: ', str(lr.score(x_data, y_data)))
+
+        self.md.writelines('r-squared for width-depth relationship: {} \n'.format(str(lr.score(x_data, y_data))))
 
         return lr.coef_, lr.intercept_
 
@@ -116,13 +142,15 @@ class FractionalTransport:
         Finds the linear regression parameters to calculate depth as a function of discharge (from measurements)
         :return:
         """
-        q = np.array(self.geom_df['Q']).reshape(-1, 1)
-        h = np.array(10**self.geom_df['h'])
+        q = np.array(np.log(self.geom_df['Q'])).reshape(-1, 1)
+        h = np.array(np.log(self.geom_df['h']))
         lr = LinearRegression()
         lr.fit(q, h)
         print('discharge-depth r2: ', str(lr.score(q, h)))
 
-        return lr.coef_, lr.intercept_
+        self.md.writelines('r-squared for discharge-depth relationship: {} \n'.format(str(lr.score(q, h))))
+
+        return np.exp(lr.intercept_), lr.coef_
 
     def calc_h_from_q(self, q):
         """
@@ -131,7 +159,7 @@ class FractionalTransport:
         :return:
         """
 
-        return np.log(self.h_coef*q+self.h_intercept)
+        return self.h_coef*q**self.h_exponent
 
     def tau_gc_star_i(self, d):
 
@@ -163,6 +191,8 @@ class FractionalTransport:
         :return:
         """
 
+        self.md.writelines('Calculations started: {} \n'.format(datetime.now().strftime("%d/%m/%Y %H:%M:%S")))
+
         for i in self. q_df.index:
             q = self.q_df.loc[i, 'Q']
             h = self.calc_h_from_q(q)
@@ -184,6 +214,8 @@ class FractionalTransport:
                 # add result to output table
                 df = pd.DataFrame([q, d, qb], columns=['Q', 'D', 'qb'])
                 self.out_df.append(df)
+
+        return
 
 
 
