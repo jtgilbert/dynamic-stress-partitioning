@@ -46,6 +46,8 @@ class FractionalTransport:
 
         # set up a log file
         path = os.getcwd()
+        if not os.path.isdir(path + '/Outputs'):
+            os.mkdir(path+'/Outputs')
         metatxt = path + '/Outputs/{}_log.txt'.format(stream_id)
         self.md = open(metatxt, 'w+')
         init_lines = ['Fractional transport rates calculated for stream: {} using Gilbert dynamic shear stress '
