@@ -12,7 +12,7 @@ class FractionalTransport:
     Create an instance of fractional transport calculations for a given stream reach.
     """
 
-    def __init__(self, stream_id, reach_slope):
+    def __init__(self, stream_id, reach_slope, minimum_fraction=0.01):
         """
         Calculates fractional bedload transport rates using the dynamic shear stress partitioning approach of Gilbert
         :param stream_id: The name of the stream in the input data tables (str)
@@ -38,10 +38,11 @@ class FractionalTransport:
 
         #
         self.s = reach_slope
+        self.minimum_fraction = minimum_fraction
 
         # Calculate grain size characteristics
-        self.d50 = np.percentile(self.d_df.D, 50)
-        self.d84 = np.percentile(self.d_df.D, 84)
+        self.d50 = np.percentile(self.d_df.D, 50)/1000
+        self.d84 = np.percentile(self.d_df.D, 84)/1000
 
         # set up a log file
         path = os.getcwd()
@@ -50,8 +51,8 @@ class FractionalTransport:
         init_lines = ['Fractional transport rates calculated for stream: {} using Gilbert dynamic shear stress '
                       'partitioning method \n \n'.format(stream_id),
                       'Reach-average slope: {} \n'.format(str(reach_slope)),
-                      'Median grain size (D50): {} \n'.format(str(self.d50)),
-                      'D84: {} \n'.format(str(self.d84))]
+                      'Median grain size (D50): {}m \n'.format(str(self.d50)),
+                      'D84: {}m \n \n'.format(str(self.d84))]
         self.md.writelines(init_lines)
 
         # get proportion for each grain size fraction
@@ -64,7 +65,13 @@ class FractionalTransport:
         self.w_coef, self.w_intercept = self.width_from_depth_params()
 
         # set up output table - columns:
-        self.out_df = pd.DataFrame(columns=['Q', 'D', 'qb'])
+        q = self.q_df['Q']
+        d = self.d_fractions.keys()
+        iterables = [q, d]
+        index = pd.MultiIndex.from_product(iterables, names=['Q', 'D'])
+        zeros = np.zeros((len(q)*len(d), 2))
+        self.out_df = pd.DataFrame(zeros, index=index, columns=['qb', 'Qb'])
+        # self.out_df = pd.DataFrame(columns=['Q', 'D', 'qb'])
 
         # run calculations
         self.find_fractional_transport()
@@ -83,18 +90,21 @@ class FractionalTransport:
         d_dict = {}
 
         # set up the size ranges
-        intervals = [[0,0.5],[0.5,1],[1,2],[2,4],[4,6],[6,8],[8,12],[12,16],[16,24],[24,32],[32,48],[48,64],[64,96],
+        intervals = [[0.5,1],[1,2],[2,4],[4,6],[6,8],[8,12],[12,16],[16,24],[24,32],[32,48],[48,64],[64,96],
                      [96,128],[128,192],[192,256]]
 
         # append values to the dictionary
         for i in intervals:
             count = 0
             for d in self.d_df.index:
-                if i[0] < (self.d_df.loc[d, 'D']*1000) <= i[1]:
+                if i[0] < (self.d_df.loc[d, 'D']) <= i[1]:
                     count += 1
-            d_dict[i[0]] = count/len(self.d_df)
+            if count > 0:
+                d_dict[i[0]/1000] = count/len(self.d_df)
+            else:
+                d_dict[i[0]/1000] = self.minimum_fraction
 
-        self.md.writelines('grain size fractions: {} \n'.format(str(d_dict)))
+        self.md.writelines('grain size fractions: {} \n \n'.format(str(d_dict)))
 
         return d_dict
 
@@ -114,8 +124,7 @@ class FractionalTransport:
         print('depth-width R2: ', str(lr.score(x_data, y_data)))
 
         self.md.writelines('r-squared for width-depth relationship: {} \n'.format(str(lr.score(x_data, y_data))))
-
-        return lr.coef_, lr.intercept_
+        return lr.coef_[0], lr.intercept_
 
     def calc_w_from_h(self, h):
         """
@@ -149,8 +158,7 @@ class FractionalTransport:
         print('discharge-depth r2: ', str(lr.score(q, h)))
 
         self.md.writelines('r-squared for discharge-depth relationship: {} \n'.format(str(lr.score(q, h))))
-
-        return np.exp(lr.intercept_), lr.coef_
+        return np.exp(lr.intercept_), lr.coef_[0]
 
     def calc_h_from_q(self, q):
         """
@@ -191,7 +199,7 @@ class FractionalTransport:
         :return:
         """
 
-        self.md.writelines('Calculations started: {} \n'.format(datetime.now().strftime("%d/%m/%Y %H:%M:%S")))
+        self.md.writelines('\n Calculations started: {} \n'.format(datetime.now().strftime("%d/%m/%Y %H:%M:%S")))
 
         for i in self. q_df.index:
             q = self.q_df.loc[i, 'Q']
@@ -199,6 +207,7 @@ class FractionalTransport:
             for d in self.d_fractions.keys():
                 tau_gc_star_i = self.tau_gc_star_i(d)
                 hi = self.calc_hi(d, q, h)
+                w = self.calc_w_from_h(h)
                 tau_g_star_i = self.tau_g_star_i(hi, d)
                 ratio = tau_g_star_i/tau_gc_star_i
                 if ratio < 0:
@@ -209,11 +218,14 @@ class FractionalTransport:
                     wi_star = 14*(1-(1.11/ratio**0.8))**4.5
 
                 # convert from wi_star to qs
-                qb = (wi_star*self.d_fractions[d]*(9.81*h*self.s)**(3/2)) / (1.65*9.81)
+                q_b = (wi_star*self.d_fractions[d]*(9.81*h*self.s)**(3/2)) / (1.65*9.81)
+                Qb = q_b * w
 
                 # add result to output table
-                df = pd.DataFrame([q, d, qb], columns=['Q', 'D', 'qb'])
-                self.out_df.append(df)
+                self.out_df.loc[q, d] = [q_b, Qb]
+                # self.out_df.loc[len(self.out_df)]=[q, d, q_b, Qb]
+
+        self.md.writelines('Calculations ended: {} \n'.format(datetime.now().strftime("%d/%m/%Y %H:%M:%S")))
 
         return
 
