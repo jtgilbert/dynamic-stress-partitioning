@@ -12,7 +12,7 @@ class FractionalTransport:
     Create an instance of fractional transport calculations for a given stream reach.
     """
 
-    def __init__(self, stream_id, reach_slope, minimum_fraction=0.01):
+    def __init__(self, stream_id, reach_slope, discharge_interval, minimum_fraction=0.01):
         """
         Calculates fractional bedload transport rates using the dynamic shear stress partitioning approach of Gilbert
         :param stream_id: The name of the stream in the input data tables (str)
@@ -27,6 +27,8 @@ class FractionalTransport:
             raise Exception('stream_id: {} does not exist in hydraulic_geometry.csv'.format(stream_id))
         else:
             self.geom_df = geom_df[geom_df['stream_id'] == stream_id]
+            if len(self.geom_df) < 3:
+                raise Exception('stream must contain 3 or more hydraulic geometry measurements')
 
         # pull the selected stream id from the grain size distribution csv
         if stream_id not in d_df.stream_id.unique():
@@ -39,6 +41,7 @@ class FractionalTransport:
         #
         self.s = reach_slope
         self.minimum_fraction = minimum_fraction
+        self.discharge_interval = discharge_interval
 
         # Calculate grain size characteristics
         self.d50 = np.percentile(self.d_df.D, 50)/1000
@@ -71,8 +74,8 @@ class FractionalTransport:
         d = self.d_fractions.keys()
         iterables = [q, d]
         index = pd.MultiIndex.from_product(iterables, names=['Q', 'D'])
-        zeros = np.zeros((len(q)*len(d), 2))
-        self.out_df = pd.DataFrame(zeros, index=index, columns=['qb', 'Qb'])
+        zeros = np.zeros((len(q)*len(d), 3))
+        self.out_df = pd.DataFrame(zeros, index=index, columns=['qb (kg/m/s)', 'Qb(kg/s)', 'Yield (kg)'])
         # self.out_df = pd.DataFrame(columns=['Q', 'D', 'qb'])
 
         # run calculations
@@ -123,7 +126,7 @@ class FractionalTransport:
         y_data = np.array(self.geom_df['w'])
         lr = LinearRegression()
         lr.fit(x_data, y_data)
-        print('depth-width R2: ', str(lr.score(x_data, y_data)))
+        print('depth-width r2: ', str(lr.score(x_data, y_data)))
 
         self.md.writelines('r-squared for width-depth relationship: {} \n'.format(str(lr.score(x_data, y_data))))
         return lr.coef_[0], lr.intercept_
@@ -177,7 +180,7 @@ class FractionalTransport:
 
     def tau_g_star_i(self, h_i, d):
 
-        return (9810*h_i*self.s)/(1.65*9.81*d)
+        return (9810*h_i*self.s)/(1650*9.81*d)
 
     def err(self, v, d, q_obs):
         h = d ** 0.25 * ((v ** 1.5 / (9.81 * self.s) ** 0.75) / 22.627)
@@ -201,7 +204,7 @@ class FractionalTransport:
         :return:
         """
 
-        self.md.writelines('\n Calculations started: {} \n'.format(datetime.now().strftime("%d/%m/%Y %H:%M:%S")))
+        self.md.writelines('\nCalculations started: {} \n'.format(datetime.now().strftime("%d/%m/%Y %H:%M:%S")))
 
         for i in self. q_df.index:
             q = self.q_df.loc[i, 'Q']
@@ -212,7 +215,8 @@ class FractionalTransport:
                 w = self.calc_w_from_h(h)
                 tau_g_star_i = self.tau_g_star_i(hi, d)
                 ratio = tau_g_star_i/tau_gc_star_i
-                if ratio < 0:
+                min_ratio = (0.017*(d/self.d50)**-0.65)/tau_gc_star_i
+                if ratio < min_ratio:
                     ratio = 0
                 if ratio < 2:
                     wi_star = 0.0008*ratio**7.5
@@ -222,12 +226,14 @@ class FractionalTransport:
                 # convert from wi_star to qs
                 q_b = (wi_star*self.d_fractions[d]*(9.81*h*self.s)**(3/2)) / (1.65*9.81)
                 Qb = q_b * w
+                tot = Qb*self.discharge_interval
 
                 # add result to output table
-                self.out_df.loc[q, d] = [q_b, Qb]
+                self.out_df.loc[q, d] = [q_b, Qb, tot]
                 # self.out_df.loc[len(self.out_df)]=[q, d, q_b, Qb]
 
-        self.md.writelines('Calculations ended: {} \n'.format(datetime.now().strftime("%d/%m/%Y %H:%M:%S")))
+        self.md.writelines('Calculations ended: {} \n \n'.format(datetime.now().strftime("%d/%m/%Y %H:%M:%S")))
+        self.md.writelines('Total bedload transport: {} kg \n'.format(self.out_df['Yield (kg)'].sum()))
 
         return
 
