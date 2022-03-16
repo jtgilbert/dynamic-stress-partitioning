@@ -49,9 +49,11 @@ class FractionalTransport:
 
         # set up a log file
         path = os.getcwd()
-        if not os.path.isdir(path + '/Outputs'):
-            os.mkdir(path+'/Outputs')
-        metatxt = path + '/Outputs/{}_log.txt'.format(stream_id)
+        if not os.path.isdir(path + '/Outputs/'):
+            os.mkdir(path + '/Outputs/')
+        if not os.path.isdir(path + 'Outputs/{}'.format(stream_id)):
+            os.mkdir(path + '/Outputs/{}'.format(stream_id))
+        metatxt = path + '/Outputs/{}/{}_log.txt'.format(stream_id, stream_id)
         self.md = open(metatxt, 'w+')
         init_lines = ['Fractional transport rates calculated for stream: {} using Gilbert dynamic shear stress '
                       'partitioning method \n \n'.format(stream_id),
@@ -82,7 +84,7 @@ class FractionalTransport:
         self.find_fractional_transport()
 
         # save output table
-        self.out_df.to_csv('Outputs/{}_qb.csv'.format(stream_id))
+        self.out_df.to_csv('Outputs/{}/{}_qb.csv'.format(stream_id, stream_id))
         self.md.close()
 
     def grain_sizes(self):
