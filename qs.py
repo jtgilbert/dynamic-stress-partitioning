@@ -5,6 +5,7 @@ from scipy.optimize import minimize
 from sklearn.linear_model import LinearRegression
 from datetime import datetime
 import os
+from tqdm import tqdm
 
 
 class FractionalTransport:
@@ -51,9 +52,12 @@ class FractionalTransport:
         path = os.getcwd()
         if not os.path.isdir(path + '/Outputs/'):
             os.mkdir(path + '/Outputs/')
-        if not os.path.isdir(path + 'Outputs/{}'.format(stream_id)):
+        if not os.path.isdir(path + '/Outputs/{}'.format(stream_id)):
             os.mkdir(path + '/Outputs/{}'.format(stream_id))
+        if os.path.isfile(path + '/Outputs/{}/{}_log.txt'.format(stream_id, stream_id)):
+            os.remove(path + '/Outputs/{}/{}_log.txt'.format(stream_id, stream_id))
         metatxt = path + '/Outputs/{}/{}_log.txt'.format(stream_id, stream_id)
+
         self.md = open(metatxt, 'w+')
         init_lines = ['Fractional transport rates calculated for stream: {} using Gilbert dynamic shear stress '
                       'partitioning method \n \n'.format(stream_id),
@@ -67,9 +71,11 @@ class FractionalTransport:
 
         # To be able to calculate depth for each discharge (used to get V0)
         self.h_coef, self.h_exponent = self.h_from_q_params()
+        self.md.writelines('equation: h = {} * Q ^ {}\n'.format(self.h_coef, self.h_exponent))
 
         # to find width for any depth
         self.w_coef, self.w_intercept = self.width_from_depth_params()
+        self.md.writelines('equation: w = {} * Q + {}\n'.format(self.w_coef, self.w_intercept))
 
         # set up output table - columns:
         q = self.q_df['Q']
@@ -81,9 +87,11 @@ class FractionalTransport:
         # self.out_df = pd.DataFrame(columns=['Q', 'D', 'qb'])
 
         # run calculations
+        print('Calculating transport')
         self.find_fractional_transport()
 
         # save output table
+        print('Saving output file')
         self.out_df.to_csv('Outputs/{}/{}_qb.csv'.format(stream_id, stream_id))
         self.md.close()
 
@@ -110,6 +118,15 @@ class FractionalTransport:
                 d_dict[i[0]/1000] = count/len(self.d_df)
             else:
                 d_dict[i[0]/1000] = self.minimum_fraction
+
+        # correct for a total > 1 due to enforcing a minimum fraction (SHOULD THIS CHANGE D50??)
+        tot = 0
+        for i in d_dict:
+            tot += d_dict[i]
+        if tot > 1:
+            for x in d_dict:
+                if d_dict[x] == max(d_dict.values()):
+                    d_dict[x] = d_dict[x] - (tot - 1)
 
         self.md.writelines('grain size fractions: {} \n \n'.format(str(d_dict)))
 
@@ -193,9 +210,14 @@ class FractionalTransport:
         return err
 
     def calc_hi(self, d, q, h):
-        v0 = self.ferguson_vpe(h)*2
+        v0 = self.ferguson_vpe(h)*3
 
         res = minimize(self.err, v0, args=(d, q))
+        if res.x[0] <= 0:
+            print('WARNING: Solution for velocity is negative')
+        if res.x[0] <= 0.01:
+            print('Very low velocity: setting to 0.01 m/s')
+            res.x[0] = 0.01
         h_adj = d ** 0.25 * ((res.x[0] ** 1.5 / (9.81 * self.s) ** 0.75) / 22.627)
 
         return h_adj
@@ -208,7 +230,9 @@ class FractionalTransport:
 
         self.md.writelines('\nCalculations started: {} \n'.format(datetime.now().strftime("%d/%m/%Y %H:%M:%S")))
 
-        for i in self. q_df.index:
+        for i in tqdm(self.q_df.index):
+            # sleep(10)
+            # print('for discharge entry {} of {}'.format(i, len(self.q_df)))
             q = self.q_df.loc[i, 'Q']
             h = self.calc_h_from_q(q)
             for d in self.d_fractions.keys():
@@ -217,7 +241,7 @@ class FractionalTransport:
                 w = self.calc_w_from_h(h)
                 tau_g_star_i = self.tau_g_star_i(hi, d)
                 ratio = tau_g_star_i/tau_gc_star_i
-                min_ratio = (0.017*(d/self.d50)**-0.65)/tau_gc_star_i
+                min_ratio = (0.02*(d/self.d50)**-0.65)/tau_gc_star_i
                 if ratio < min_ratio:
                     ratio = 0
                 if ratio < 2:
