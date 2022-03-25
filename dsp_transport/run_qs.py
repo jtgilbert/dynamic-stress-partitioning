@@ -1,4 +1,4 @@
-from DSP_Fractional_Transport import qs
+from dsp_transport import dsp_transport
 
 stream_id = 'Blodgett'
 reach_slope = 0.019

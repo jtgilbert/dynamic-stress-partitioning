@@ -117,7 +117,7 @@ class FractionalTransport:
                     count += 1
             if count > 0:
                 d_dict[i[0]/1000] = count/len(self.d_df)
-            elif count == 0 and i[0] < 8:
+            elif count == 0 and i[0] <= 8:
                 d_dict[i[0]/1000] = self.minimum_fraction
             else:
                 d_dict[i[0]/1000] = 0
