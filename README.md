@@ -2,8 +2,9 @@
 Surface-based fractional sediment transport formula based on dynamic shear stress partitioning framework.
 
 ## Setup
-Download the repository. Navigate to the `scripts` folder, open a shell terminal, and run the bootstrap.sh script. This 
-will set up a virtual environment with all of the necessary Python packages.
+Download the .zip of the repository from the latest release. Navigate to the `scripts` folder, open a shell 
+terminal, and run the bootstrap.sh script. This will set up a virtual environment with all of the necessary 
+Python packages.
 
 ## Data Entry
 Navigate to the `Input_data` folder, where three csv files are located. 
