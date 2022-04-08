@@ -6,6 +6,7 @@ from sklearn.linear_model import LinearRegression
 from datetime import datetime
 import os
 from tqdm import tqdm
+import argparse
 
 
 class FractionalTransport:
@@ -20,8 +21,8 @@ class FractionalTransport:
         :param reach_slope: The reach averaged slope - unitless e.g., m/m - (float)
         """
 
-        geom_df = pd.read_csv('Input_data/hydraulic_geometry.csv')
-        d_df = pd.read_csv('Input_data/grain_size.csv')
+        geom_df = pd.read_csv('../Input_data/hydraulic_geometry.csv')
+        d_df = pd.read_csv('../Input_data/grain_size.csv')
 
         # pull the selected stream id from the hydraulic geometry csv
         if stream_id not in geom_df.stream_id.unique():
@@ -37,7 +38,7 @@ class FractionalTransport:
         else:
             self.d_df = d_df[d_df['stream_id'] == stream_id]
 
-        self.q_df = pd.read_csv('Input_data/discharge.csv')
+        self.q_df = pd.read_csv('../Input_data/discharge.csv')
 
         #
         self.s = reach_slope
@@ -49,14 +50,14 @@ class FractionalTransport:
         self.d84 = np.percentile(self.d_df.D, 84)/1000
 
         # set up a log file
-        path = os.getcwd()
-        if not os.path.isdir(path + '/Outputs/'):
-            os.mkdir(path + '/Outputs/')
-        if not os.path.isdir(path + '/Outputs/{}'.format(stream_id)):
-            os.mkdir(path + '/Outputs/{}'.format(stream_id))
-        if os.path.isfile(path + '/Outputs/{}/{}_log.txt'.format(stream_id, stream_id)):
-            os.remove(path + '/Outputs/{}/{}_log.txt'.format(stream_id, stream_id))
-        metatxt = path + '/Outputs/{}/{}_log.txt'.format(stream_id, stream_id)
+        # path = os.getcwd()
+        if not os.path.isdir('../Outputs/'):
+            os.mkdir('../Outputs/')
+        if not os.path.isdir('../Outputs/{}'.format(stream_id)):
+            os.mkdir('../Outputs/{}'.format(stream_id))
+        if os.path.isfile('../Outputs/{}/{}_log.txt'.format(stream_id, stream_id)):
+            os.remove('../Outputs/{}/{}_log.txt'.format(stream_id, stream_id))
+        metatxt = '../Outputs/{}/{}_log.txt'.format(stream_id, stream_id)
 
         self.md = open(metatxt, 'w+')
         init_lines = ['Fractional transport rates calculated for stream: {} using Gilbert dynamic shear stress '
@@ -92,7 +93,7 @@ class FractionalTransport:
 
         # save output table
         print('Saving output file')
-        self.out_df.to_csv('Outputs/{}/{}_qb.csv'.format(stream_id, stream_id))
+        self.out_df.to_csv('../Outputs/{}/{}_qb.csv'.format(stream_id, stream_id))
         self.md.close()
 
     def grain_sizes(self):
@@ -116,8 +117,10 @@ class FractionalTransport:
                     count += 1
             if count > 0:
                 d_dict[i[0]/1000] = count/len(self.d_df)
-            else:
+            elif count == 0 and i[0] <= 8:
                 d_dict[i[0]/1000] = self.minimum_fraction
+            else:
+                d_dict[i[0]/1000] = 0
 
         # correct for a total > 1 due to enforcing a minimum fraction (SHOULD THIS CHANGE D50??)
         tot = 0
@@ -128,7 +131,7 @@ class FractionalTransport:
                 if d_dict[x] == max(d_dict.values()):
                     d_dict[x] = d_dict[x] - (tot - 1)
 
-        self.md.writelines('grain size fractions: {} \n \n'.format(str(d_dict)))
+        self.md.writelines('grain size fractions (size (m): Fraction): {} \n \n'.format(str(d_dict)))
 
         return d_dict
 
@@ -250,7 +253,7 @@ class FractionalTransport:
                     wi_star = 14*(1-(1.11/ratio**0.8))**4.5
 
                 # convert from wi_star to qs
-                q_b = (wi_star*self.d_fractions[d]*(9.81*h*self.s)**(3/2)) / (1.65*9.81)
+                q_b = (wi_star*(self.d_fractions[d]*100)*(9.81*h*self.s)**(3/2)) / (1.65*9.81)
                 Qb = q_b * w
                 tot = Qb*self.discharge_interval
 
@@ -264,4 +267,18 @@ class FractionalTransport:
         return
 
 
+def main():
 
+    parser = argparse.ArgumentParser()
+    parser.add_argument('stream_id', help='The name of the stream as entered in the Input_data csv files', type=str)
+    parser.add_argument('reach_slope', help='A value for the reach averaged slope', type=float)
+    parser.add_argument('discharge_interval', help='The time (in seconds) between each discharge measurement in the discharge csv file', type=int)
+    parser.add_argument('--minimum_fraction', help='(optional) A minimum fraction to assign to fine grain size classes', type=float, default=0.01)
+
+    args = parser.parse_args()
+
+    FractionalTransport(args.stream_id, args.reach_slope, args.discharge_interval, args.minimum_fraction)
+
+
+if __name__ == '__main__':
+    main()
