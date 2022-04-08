@@ -7,10 +7,10 @@ will set up a virtual environment with all of the necessary Python packages.
 
 ## Data Entry
 Navigate to the `Input_data` folder, where three csv files are located. 
-- Enter grain size measurements from the reach of interest into the 'grain_size.csv' file. 
+- Enter grain size measurements (in mm) from the reach of interest into the 'grain_size.csv' file. 
 - Enter hydraulic measurements into the 'hydraulic_geometry.csv' file. You should have three more paired measurements
-of discharge, channel width, and average depth.
-- Enter the discharge record for which you want to calculate sediment transport in the 'discharge.csv' file. 
+of discharge (cms), channel width (m), and average depth (m).
+- Enter the discharge (cms) record for which you want to calculate sediment transport in the 'discharge.csv' file. 
 
 ## Running the model
 The simplest way to run the model is via command line. Open a command line terminal in the model folder and activate the 
