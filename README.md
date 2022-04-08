@@ -14,7 +14,7 @@ of discharge, channel width, and average depth.
 
 ## Running the model
 The simplest way to run the model is via command line. Open a command line terminal in the model folder and activate the 
-python environment.
+python environment. (These instructions apply to UNIX systems, Windows still to come).
 
 ```commandline
 source .venv/bin/activate
@@ -57,4 +57,11 @@ positional arguments:
 optional arguments:
   -h, --help  show this help message and exit
 
+```
+
+for example, if I entered data for 'Beaver_Creek' in the input tables, it's slope is 0.015 and the interval for 
+discharge measurements is 15 minutes, I would enter:
+
+```commandline
+python dsp_transport.py Beaver_Creek 0.015 900
 ```
