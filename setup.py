@@ -5,7 +5,7 @@ import re
 
 # https://packaging.python.org/discussions/install-requires-vs-requirements/
 install_requires = [
-    'numpy==1.22.1', 'pandas==1.3.5', 'scipy==1.7.3', 'scikit-learn==1.0.2',
+    'numpy>=1.21', 'pandas==1.3.5', 'scipy==1.7.3', 'scikit-learn==1.0.2',
     'datetime', 'os', 'tqdm', 'argparse', 'matplotlib==3.5.1',
 ]
 

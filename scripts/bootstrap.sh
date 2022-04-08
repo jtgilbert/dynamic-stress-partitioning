@@ -2,8 +2,8 @@
 set -eu
 
 python3 --version
-python3 -m venv .venv
+python3 -m venv ../.venv
 
-.venv/bin/python -m pip install --upgrade pip
+../.venv/bin/python -m pip install --upgrade pip
 
-.venv/bin/pip install -e ./dsp_transport
+../.venv/bin/pip install -e ../
