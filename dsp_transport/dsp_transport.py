@@ -7,6 +7,7 @@ from datetime import datetime
 import os
 from tqdm import tqdm
 import argparse
+import logging
 
 
 class FractionalTransport:
@@ -26,7 +27,7 @@ class FractionalTransport:
 
         # pull the selected stream id from the hydraulic geometry csv
         if stream_id not in geom_df.stream_id.unique():
-            raise Exception('stream_id: {} does not exist in hydraulic_geometry.csv'.format(stream_id))
+            raise Exception(f'stream_id: {stream_id} does not exist in hydraulic_geometry.csv')
         else:
             self.geom_df = geom_df[geom_df['stream_id'] == stream_id]
             if len(self.geom_df) < 3:
@@ -34,7 +35,7 @@ class FractionalTransport:
 
         # pull the selected stream id from the grain size distribution csv
         if stream_id not in d_df.stream_id.unique():
-            raise Exception('stream id: {} does not exist in grain_size.csv'.format(stream_id))
+            raise Exception(f'stream id: {stream_id} does not exist in grain_size.csv')
         else:
             self.d_df = d_df[d_df['stream_id'] == stream_id]
 
@@ -53,30 +54,29 @@ class FractionalTransport:
         # path = os.getcwd()
         if not os.path.isdir('../Outputs/'):
             os.mkdir('../Outputs/')
-        if not os.path.isdir('../Outputs/{}'.format(stream_id)):
-            os.mkdir('../Outputs/{}'.format(stream_id))
-        if os.path.isfile('../Outputs/{}/{}_log.txt'.format(stream_id, stream_id)):
-            os.remove('../Outputs/{}/{}_log.txt'.format(stream_id, stream_id))
-        metatxt = '../Outputs/{}/{}_log.txt'.format(stream_id, stream_id)
+        if not os.path.isdir(f'../Outputs/{stream_id}'):
+            os.mkdir(f'../Outputs/{stream_id}')
+        if os.path.isfile(f'../Outputs/{stream_id}/{stream_id}.log'):
+            os.remove(f'../Outputs/{stream_id}/{stream_id}.log')
 
-        self.md = open(metatxt, 'w+')
-        init_lines = ['Fractional transport rates calculated for stream: {} using Gilbert dynamic shear stress '
-                      'partitioning method \n \n'.format(stream_id),
-                      'Reach-average slope: {} \n'.format(str(reach_slope)),
-                      'Median grain size (D50): {}m \n'.format(str(self.d50)),
-                      'D84: {}m \n \n'.format(str(self.d84))]
-        self.md.writelines(init_lines)
+        filename = f'../Outputs/{stream_id}/{stream_id}.log'
+        logging.basicConfig(filename=filename, level=logging.DEBUG)
+        logging.info('Fractional transport rates calculated for stream: %s using Gilbert dynamic'
+                     'shear stress partitioning method', stream_id)
+        logging.info('Reach-average slope: %s', str(reach_slope))
+        logging.info('Median grain size (D50): %s', str(self.d50))
+        logging.info(f'D84: %s', str(self.d84))
 
         # get proportion for each grain size fraction
         self.d_fractions = self.grain_sizes()
 
         # To be able to calculate depth for each discharge (used to get V0)
         self.h_coef, self.h_exponent = self.h_from_q_params()
-        self.md.writelines('equation: h = {} * Q ^ {}\n'.format(self.h_coef, self.h_exponent))
+        logging.info('equation: h = %s * Q ^ %s', str(self.h_coef), str(self.h_exponent))
 
         # to find width for any depth
         self.w_coef, self.w_intercept = self.width_from_depth_params()
-        self.md.writelines('equation: w = {} * Q + {}\n'.format(self.w_coef, self.w_intercept))
+        logging.info('equation: w = %s * Q + %s', str(self.w_coef), str(self.w_intercept))
 
         # set up output table - columns:
         q = self.q_df['Q']
@@ -93,8 +93,7 @@ class FractionalTransport:
 
         # save output table
         print('Saving output file')
-        self.out_df.to_csv('../Outputs/{}/{}_qb.csv'.format(stream_id, stream_id))
-        self.md.close()
+        self.out_df.to_csv(f'../Outputs/{stream_id}/{stream_id}_qb.csv')
 
     def grain_sizes(self):
         """
@@ -131,13 +130,13 @@ class FractionalTransport:
                 if d_dict[x] == max(d_dict.values()):
                     d_dict[x] = d_dict[x] - (tot - 1)
 
-        self.md.writelines('grain size fractions (size (m): Fraction): {} \n \n'.format(str(d_dict)))
+        logging.info('grain size fractions (size (m): Fraction): %s', str(d_dict))
 
         return d_dict
 
     # use function with hydraulic geometry data to come up with relationship width as function of depth
     # this (as is now) assumes a linear relationship between width and depth (instead of choosing between log and exp)
-    def width_from_depth_params(self): # maybe change to do two types of regression compare r2 and use the better
+    def width_from_depth_params(self):  # maybe change to do two types of regression compare r2 and use the better
         """
         comes up with the coefficient and intercept for a linear regression of width as a function depth
         (from measurements)
@@ -150,7 +149,7 @@ class FractionalTransport:
         lr.fit(x_data, y_data)
         print('depth-width r2: ', str(lr.score(x_data, y_data)))
 
-        self.md.writelines('r-squared for width-depth relationship: {} \n'.format(str(lr.score(x_data, y_data))))
+        logging.info('r-squared for width-depth relationship: %s', str(lr.score(x_data, y_data)))
         return lr.coef_[0], lr.intercept_
 
     def calc_w_from_h(self, h):
@@ -184,7 +183,7 @@ class FractionalTransport:
         lr.fit(q, h)
         print('discharge-depth r2: ', str(lr.score(q, h)))
 
-        self.md.writelines('r-squared for discharge-depth relationship: {} \n'.format(str(lr.score(q, h))))
+        logging.info('r-squared for discharge-depth relationship: %s', str(lr.score(q, h)))
         return np.exp(lr.intercept_), lr.coef_[0]
 
     def calc_h_from_q(self, q):
@@ -198,7 +197,15 @@ class FractionalTransport:
 
     def tau_gc_star_i(self, d):
 
-        return 0.038*(d/self.d50)**-0.65
+        roughness = self.d84/self.d50
+        if roughness <= 1.6:
+            coef = 0.017
+        elif 1.6 < roughness < 4:
+            coef = 0.09*np.log(roughness)-0.025
+        else:
+            coef = 0.087
+
+        return coef*(d/self.d50)**-0.65
 
     def tau_g_star_i(self, h_i, d):
 
@@ -218,8 +225,10 @@ class FractionalTransport:
         res = minimize(self.err, v0, args=(d, q))
         if res.x[0] <= 0:
             print('WARNING: Solution for velocity is negative')
+            logging.warning('Solution for velocity is negative')
         if res.x[0] <= 0.01:
             print('Very low velocity: setting to 0.01 m/s')
+            logging.info('Very low velocity, setting to 0.01 m/s')
             res.x[0] = 0.01
         h_adj = d ** 0.25 * ((res.x[0] ** 1.5 / (9.81 * self.s) ** 0.75) / 22.627)
 
@@ -231,7 +240,7 @@ class FractionalTransport:
         :return:
         """
 
-        self.md.writelines('\nCalculations started: {} \n'.format(datetime.now().strftime("%d/%m/%Y %H:%M:%S")))
+        logging.info(f'Calculations started: %s', str(datetime.now().strftime("%d/%m/%Y %H:%M:%S")))
 
         for i in tqdm(self.q_df.index):
             # sleep(10)
@@ -244,13 +253,13 @@ class FractionalTransport:
                 w = self.calc_w_from_h(h)
                 tau_g_star_i = self.tau_g_star_i(hi, d)
                 ratio = tau_g_star_i/tau_gc_star_i
-                min_ratio = (0.02*(d/self.d50)**-0.65)/tau_gc_star_i
+                min_ratio = (0.01*(d/self.d50)**-0.65)/tau_gc_star_i
                 if ratio < min_ratio:
                     ratio = 0
-                if ratio < 2:
-                    wi_star = 0.0008*ratio**7.5
+                if ratio < 1.7:
+                    wi_star = 0.0032*ratio**6.5
                 else:
-                    wi_star = 14*(1-(1.11/ratio**0.8))**4.5
+                    wi_star = 14*(1-(1.027/ratio**0.7))**4
 
                 # convert from wi_star to qs
                 q_b = (wi_star*(self.d_fractions[d]*100)*(9.81*h*self.s)**(3/2)) / (1.65*9.81)
@@ -261,8 +270,8 @@ class FractionalTransport:
                 self.out_df.loc[q, d] = [q_b, Qb, tot]
                 # self.out_df.loc[len(self.out_df)]=[q, d, q_b, Qb]
 
-        self.md.writelines('Calculations ended: {} \n \n'.format(datetime.now().strftime("%d/%m/%Y %H:%M:%S")))
-        self.md.writelines('Total bedload transport: {} kg \n'.format(self.out_df['Yield (kg)'].sum()))
+        logging.info('Calculations ended: %s', str(datetime.now().strftime("%d/%m/%Y %H:%M:%S")))
+        logging.info("Total bedload transport: %s kg", str(self.out_df['Yield (kg)'].sum()))
 
         return
 
