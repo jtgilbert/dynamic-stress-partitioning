@@ -30,7 +30,8 @@ setup(name='dsp_transport',
       entry_points={
           "console_scripts": [
               'dsp_transport = dsp_transport.dsp_transport:main',
-              'plotting = dsp_transport.plotting:main'
+              'plotting = dsp_transport.plotting:main',
+              'generate_gsd = dsp_transport.generate_gsd:main'
           ]
       },
       url='https://github.com/jtgilbert/dynamic-stress-partitioning',
