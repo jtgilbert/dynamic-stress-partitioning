@@ -15,7 +15,7 @@ class FractionalTransport:
     Create an instance of fractional transport calculations for a given stream reach.
     """
 
-    def __init__(self, stream_id, reach_slope, discharge_interval, minimum_fraction=0.01):
+    def __init__(self, stream_id, reach_slope, discharge_interval, minimum_fraction=0.005, lwd_factor=None):
         """
         Calculates fractional bedload transport rates using the dynamic shear stress partitioning approach of Gilbert
         :param stream_id: The name of the stream in the input data tables (str)
@@ -45,6 +45,7 @@ class FractionalTransport:
         self.s = reach_slope
         self.minimum_fraction = minimum_fraction
         self.discharge_interval = discharge_interval
+        self.lwd_factor = lwd_factor
 
         # Calculate grain size characteristics
         self.d50 = np.percentile(self.d_df.D, 50)/1000
@@ -62,7 +63,7 @@ class FractionalTransport:
         filename = f'../Outputs/{stream_id}/{stream_id}.log'
         logging.basicConfig(filename=filename, level=logging.DEBUG)
         logging.info('Fractional transport rates calculated for stream: %s using Gilbert dynamic'
-                     'shear stress partitioning method', stream_id)
+                     ' shear stress partitioning method', stream_id)
         logging.info('Reach-average slope: %s', str(reach_slope))
         logging.info('Median grain size (D50): %s', str(self.d50))
         logging.info(f'D84: %s', str(self.d84))
@@ -114,14 +115,10 @@ class FractionalTransport:
             for d in self.d_df.index:
                 if i[0] < (self.d_df.loc[d, 'D']) <= i[1]:
                     count += 1
-            if count > 0 and count/len(self.d_df) > self.minimum_fraction:
-                d_dict[i[0]/1000] = count/len(self.d_df)
-            elif count > 0 and count/len(self.d_df) < self.minimum_fraction:
-                d_dict[i[0]/1000] = self.minimum_fraction
-            elif count == 0 and i[0] <= 8:
-                d_dict[i[0]/1000] = self.minimum_fraction
-            else:
-                d_dict[i[0]/1000] = 0
+            d_dict[i[0]/1000] = count/len(self.d_df)
+            if self.minimum_fraction is not None:
+                if count/len(self.d_df) < self.minimum_fraction and i[0] <= 8:
+                    d_dict[i[0]/1000] = self.minimum_fraction
 
         # correct for a total > 1 due to enforcing a minimum fraction (SHOULD THIS CHANGE D50??)
         tot = 0
@@ -197,17 +194,24 @@ class FractionalTransport:
 
         return self.h_coef*q**self.h_exponent
 
-    def tau_gc_star_i(self, d):
+    def tau_gc_star_i(self, d, lwd_factor):
 
         roughness = self.d84/self.d50
-        if roughness <= 1.6:
+        if roughness <= 1.8:
             coef = 0.017
-        elif 1.6 < roughness < 4:
-            coef = 0.09*np.log(roughness)-0.025
+        elif 1.6 < roughness < 3.5:
+            coef = 0.104*np.log(roughness)-0.044
         else:
             coef = 0.087
 
-        return coef*(d/self.d50)**-0.65
+        if lwd_factor is None:
+            return coef*(d/self.d50)**-0.65
+        elif lwd_factor == 1:
+            return (coef*(d/self.d50)**-0.65) + 0.01
+        elif lwd_factor == 2:
+            return (coef * (d / self.d50) ** -0.65) + 0.02
+        elif lwd_factor == 3:
+            return (coef * (d / self.d50) ** -0.65) + 0.03
 
     def tau_g_star_i(self, h_i, d):
 
@@ -225,12 +229,9 @@ class FractionalTransport:
         v0 = self.ferguson_vpe(h)*3
 
         res = minimize(self.err, v0, args=(d, q))
-        if res.x[0] <= 0:
-            print('WARNING: Solution for velocity is negative')
-            logging.warning('Solution for velocity is negative')
         if res.x[0] <= 0.01:
-            print('Very low velocity: setting to 0.01 m/s')
-            logging.info('Very low velocity, setting to 0.01 m/s')
+            print('Very low or negative velocity solution: setting to 0.01 m/s')
+            logging.info('Very low or negative velocity solution, setting to 0.01 m/s')
             res.x[0] = 0.01
         h_adj = d ** 0.25 * ((res.x[0] ** 1.5 / (9.81 * self.s) ** 0.75) / 22.627)
 
@@ -250,18 +251,18 @@ class FractionalTransport:
             q = self.q_df.loc[i, 'Q']
             h = self.calc_h_from_q(q)
             for d in self.d_fractions.keys():
-                tau_gc_star_i = self.tau_gc_star_i(d)
+                tau_gc_star_i = self.tau_gc_star_i(d, self.lwd_factor)
                 hi = self.calc_hi(d, q, h)
                 w = self.calc_w_from_h(h)
                 tau_g_star_i = self.tau_g_star_i(hi, d)
                 ratio = tau_g_star_i/tau_gc_star_i
-                min_ratio = (0.01*(d/self.d50)**-0.65)/tau_gc_star_i
+                min_ratio = (0.017*(d/self.d50)**-0.65)/tau_gc_star_i
                 if ratio < min_ratio:
                     ratio = 0
                 if ratio < 1.7:
-                    wi_star = 0.0032*ratio**6.5
+                    wi_star = 0.0018*ratio**7
                 else:
-                    wi_star = 14*(1-(1.027/ratio**0.7))**4
+                    wi_star = 14*(1-(1.059/ratio**0.7))**4
 
                 # convert from wi_star to qs
                 q_b = (wi_star*(self.d_fractions[d]*100)*(9.81*h*self.s)**(3/2)) / (1.65*9.81)
@@ -284,11 +285,14 @@ def main():
     parser.add_argument('stream_id', help='The name of the stream as entered in the Input_data csv files', type=str)
     parser.add_argument('reach_slope', help='A value for the reach averaged slope', type=float)
     parser.add_argument('discharge_interval', help='The time (in seconds) between each discharge measurement in the discharge csv file', type=int)
-    parser.add_argument('--minimum_fraction', help='(optional) A minimum fraction to assign to fine grain size classes', type=float, default=0.01)
+    parser.add_argument('--minimum_fraction', help='(optional) A minimum fraction to assign to fine grain size classes', type=float, default=0.005)
+    parser.add_argument('--lwd_factor', help='Alters the critical shields stress to account for the affects of large wood, None is no '
+                                             'wood present, 1 is some scattered pieces, 2 is wood throughout the reach and 3 is '
+                                             'jams present', type=int, default=None)
 
     args = parser.parse_args()
 
-    FractionalTransport(args.stream_id, args.reach_slope, args.discharge_interval, args.minimum_fraction)
+    FractionalTransport(args.stream_id, args.reach_slope, args.discharge_interval, args.minimum_fraction, args.lwd_factor)
 
 
 if __name__ == '__main__':
