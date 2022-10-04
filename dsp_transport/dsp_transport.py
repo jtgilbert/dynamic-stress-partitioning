@@ -197,21 +197,21 @@ class FractionalTransport:
     def tau_gc_star_i(self, d, lwd_factor):
 
         roughness = self.d84/self.d50
-        if roughness <= 1.8:
-            coef = 0.017
-        elif 1.6 < roughness < 3.5:
-            coef = 0.104*np.log(roughness)-0.044
+        if roughness <= 2:
+            coef = 0.025
+        elif 2 < roughness < 3.5:
+            coef = 0.087*np.log(roughness)-0.034
         else:
-            coef = 0.087
+            coef = 0.073
 
         if lwd_factor is None:
-            return coef*(d/self.d50)**-0.65
+            return coef*(d/self.d50)**-0.68
         elif lwd_factor == 1:
-            return (coef*(d/self.d50)**-0.65) + 0.01
+            return (coef*(d/self.d50)**-0.68) + 0.01
         elif lwd_factor == 2:
-            return (coef * (d / self.d50) ** -0.65) + 0.02
+            return (coef * (d / self.d50) ** -0.68) + 0.02
         elif lwd_factor == 3:
-            return (coef * (d / self.d50) ** -0.65) + 0.03
+            return (coef * (d / self.d50) ** -0.68) + 0.03
 
     def tau_g_star_i(self, h_i, d):
 
@@ -259,10 +259,10 @@ class FractionalTransport:
                 min_ratio = (0.017*(d/self.d50)**-0.65)/tau_gc_star_i
                 if ratio < min_ratio:
                     ratio = 0
-                if ratio < 1.7:
-                    wi_star = 0.0018*ratio**7
+                if ratio < 1.8:
+                    wi_star = 0.0015*ratio**7.5
                 else:
-                    wi_star = 14*(1-(1.059/ratio**0.7))**4
+                    wi_star = 14*(1-(1.0386/ratio**0.9))**5
 
                 # convert from wi_star to qs
                 q_b = (wi_star*(self.d_fractions[d]*100)*(9.81*h*self.s)**(3/2)) / (1.65*9.81)
