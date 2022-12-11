@@ -99,3 +99,21 @@ discharge measurements is 15 minutes, I would enter:
 ```
 python dsp_transport.py 'Beaver_Creek' 0.015 900
 ```
+
+In addition to the self-contained program, the `calculate_transport.py` script is designed to be imported by other 
+programs in order to use the transport function in other applications. 
+
+```
+usage: calculate_transport.py [-h] fractions slope discharge depth width interval
+
+positional arguments:
+  fractions   A python dictionary {size: fraction in bed} with all size classes and thefraction of the bed they make up e.g. {0.004: 0.023, 0.008: 0.041}
+  slope       The reach slope
+  discharge   The flow discharge in m3/s
+  depth       The average flow depth at the given discharge
+  width       The average flow width at the given discharge
+  interval    The length of time in seconds of the discharge measurement
+
+optional arguments:
+  -h, --help  show this help message and exit
+```
