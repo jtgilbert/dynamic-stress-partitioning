@@ -12,7 +12,7 @@ class CreatePlots:
         try:
             self.df = pd.read_csv(f'../Outputs/{stream_id}/{stream_id}_qb.csv')
         except:
-            raise Exception('No output csv file that matches stream_id; dsp_transport must be run first')
+            raise OSError('No output csv file that matches stream_id; dsp_transport must be run first')
 
         if not os.path.isdir(f'../Outputs/{stream_id}/{stream_id}_figs'):
             os.mkdir(f'../Outputs/{stream_id}/{stream_id}_figs')
