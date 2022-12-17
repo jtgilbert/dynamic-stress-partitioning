@@ -69,7 +69,7 @@ class FractionalTransport:
             os.remove(f'../Outputs/{stream_id}/{stream_id}.log')
 
         filename = f'../Outputs/{stream_id}/{stream_id}.log'
-        logging.basicConfig(filename=filename, level=logging.DEBUG)
+        logging.basicConfig(filename=filename, format='%(levelname)s:%(message)s', level=logging.DEBUG)
         logging.info('Fractional transport rates calculated for stream: %s using Gilbert dynamic'
                      ' shear stress partitioning method', stream_id)
         logging.info('Reach-average slope: %s', str(reach_slope))
@@ -94,7 +94,7 @@ class FractionalTransport:
         index = pd.MultiIndex.from_product(iterables, names=['Q', 'D'])
         zeros = np.zeros((len(q)*len(d), 3))
         self.out_df = pd.DataFrame(zeros, index=index, columns=['qb (kg/m/s)', 'Qb(kg/s)', 'Yield (kg)'])
-        # self.out_df = pd.DataFrame(columns=['Q', 'D', 'qb'])
+        # self.out_df = out_df.sort_index()
 
         # run calculations
         print('Calculating transport')
