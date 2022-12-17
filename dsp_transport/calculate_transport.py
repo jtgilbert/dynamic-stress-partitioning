@@ -27,6 +27,17 @@ def calc_hi(d, q, h, d84, s, w):
     return h_adj
 
 def transport(fractions: dict, slope:float, discharge: float, depth: float, width: float, interval: int):
+    """
+
+    :param fractions: A python dictionary {size: fraction in bed} with all size classes and the fraction of the bed
+    they make up e.g. {0.004: 0.023, 0.008: 0.041}
+    :param slope: The reach slope
+    :param discharge: The flow discharge in m3/s
+    :param depth: The average flow depth at the given discharge
+    :param width: The average flow width at the given discharge
+    :param interval: The length of time in seconds of the discharge measurement
+    :return: A dictionary with transport rate and total transport for each size fraction
+    """
 
     transport_rates = {}
 
@@ -59,7 +70,7 @@ def transport(fractions: dict, slope:float, discharge: float, depth: float, widt
         Qb = q_b * width
         tot = Qb * interval
 
-        transport_rates[size] = tot
+        transport_rates[size] = [q_b, tot]
 
     return transport_rates
 

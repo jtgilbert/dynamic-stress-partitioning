@@ -24,7 +24,18 @@ def std_err(scale, loc, d16, d84):
     return err
 
 
-def generate_distribution(csv_out, csv_in=None, d50=None, d16=None, d84=None):
+def generate_distribution(csv_out: str, csv_in: str = None, d50: int = None, d16: int = None,
+                          d84: int = None, dmax: int = None):
+    """
+
+    :param csv_out: path to store a csv file with generated grain sizes
+    :param csv_in: path to a csv containing grain size measurements (optional)
+    :param d50: a D50 value for fitting the output grain size distribution (optional if csv_in provided)
+    :param d16: a D16 value for fitting the output grain size distribution (optional if csv_in provided)
+    :param d84: a D84 value for fitting the output grain size distribution (optional if csv_in provided)
+    :param dmax: a maximum grain size value (optional)
+    :return: saves a csv file with simulated grain size measurements
+    """
 
     if csv_in is None and d50 is None:
         raise Exception('If no grain count data is provided (csv_in) you must provide D50, D16, and D84 values')
@@ -73,6 +84,8 @@ def generate_distribution(csv_out, csv_in=None, d50=None, d16=None, d84=None):
     new_data = stats.norm(loc_opt, scale_opt).rvs(1000)
     new_data = ((new_data**2)*1000)
     new_data = new_data[new_data >= 0.5]
+    if dmax:
+        new_data = new_data[new_data < dmax]
 
     print(f'generated {len(new_data)} grain size measurements')
     print(f'new grain size distribution D50: {np.percentile(new_data, 50)}')
@@ -101,10 +114,12 @@ def main():
     parser.add_argument('--d84', help='A value for D84 (mm). If no input csv is entered, a value for D84 must be '
                                       'provided. If an input csv IS entered, the calculated D84 can be overridden '
                                       'by providing a value here', type=int)
+    parser.add_argument('--dmax', help='A maximum grain size (mm) for the output distribution. Generated values above'
+                                       'this threshold will be discarded', type=int)
 
     args = parser.parse_args()
 
-    generate_distribution(args.csv_out, args.csv_in, args.d50, args.d16, args.d84)
+    generate_distribution(args.csv_out, args.csv_in, args.d50, args.d16, args.d84, args.dmax)
 
 
 if __name__ == '__main__':

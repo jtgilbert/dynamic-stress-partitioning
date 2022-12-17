@@ -12,14 +12,22 @@ import logging
 
 class FractionalTransport:
     """
-    Create an instance of fractional transport calculations for a given stream reach.
+    Create an instance of fractional transport calculations for a given stream reach. This class is designed to be
+    used specifically with the tables in the Input_data folder of this repository. The standalone function
+    'calculate_transport' can be used to apply this transport function to other applications.
     """
 
-    def __init__(self, stream_id, reach_slope, discharge_interval, minimum_fraction=0.005, lwd_factor=None):
+    def __init__(self, stream_id: str, reach_slope: float, discharge_interval: int, minimum_fraction: float = 0.005,
+                 lwd_factor: int = None):
         """
-        Calculates fractional bedload transport rates using the dynamic shear stress partitioning approach of Gilbert
-        :param stream_id: The name of the stream in the input data tables (str)
-        :param reach_slope: The reach averaged slope - unitless e.g., m/m - (float)
+        Using data from input tables, calculate fractional bedload transport rates for a stream reaching using the
+        Dynamic Stress Partitioning method.
+        :param stream_id: the name of the stream from the input tables
+        :param reach_slope: the reach averaged slope (m/m)
+        :param discharge_interval: the time (s) between each discharge value in the input table
+        :param minimum_fraction: a minimum fraction of the bed to assign to each half-phi grain size interval (optional)
+        :param lwd_factor: a factor (1-3) to account for density of lwd and its affect on incipient sediment motion
+        (optional)
         """
 
         geom_df = pd.read_csv('../Input_data/hydraulic_geometry.csv')
@@ -73,11 +81,11 @@ class FractionalTransport:
 
         # To be able to calculate depth for each discharge (used to get V0)
         self.h_coef, self.h_exponent = self.h_from_q_params()
-        logging.info('equation: h = %s * Q ^ %s', str(self.h_coef), str(self.h_exponent))
+        logging.info('depth equation: h = %s * Q ^ %s', str(self.h_coef), str(self.h_exponent))
 
         # to find width for any depth
         self.w_coef, self.w_intercept = self.width_from_depth_params()
-        logging.info('equation: w = %s * Q + %s', str(self.w_coef), str(self.w_intercept))
+        logging.info('width equation: w = %s * Q + %s', str(self.w_coef), str(self.w_intercept))
 
         # set up output table - columns:
         q = self.q_df['Q']
@@ -106,14 +114,14 @@ class FractionalTransport:
         d_dict = {}
 
         # set up the size ranges
-        intervals = [[0.5,1],[1,2],[2,4],[4,6],[6,8],[8,12],[12,16],[16,24],[24,32],[32,48],[48,64],[64,96],
-                     [96,128],[128,192],[192,256]]
+        intervals = [[0.5,1],[1,2],[2,2.8],[2.8,4],[4,5.7],[5.7,8],[8,11.3],[11.3,16],[16,22.6],[22.6,32],[32,45],[45,64],[64,91],
+                     [91,128],[128,181],[181,256],[256,5000]]
 
         # append values to the dictionary
         for i in intervals:
             count = 0
             for d in self.d_df.index:
-                if i[0] < (self.d_df.loc[d, 'D']) <= i[1]:
+                if i[0] <= (self.d_df.loc[d, 'D']) < i[1]:
                     count += 1
             d_dict[i[0]/1000] = count/len(self.d_df)
             if self.minimum_fraction is not None:
@@ -195,6 +203,12 @@ class FractionalTransport:
         return self.h_coef*q**self.h_exponent
 
     def tau_gc_star_i(self, d, lwd_factor):
+        """
+        Calculate the value for critical grain Shields stress for a grain size fraction
+        :param d: the grain size
+        :param lwd_factor: a large wood factor to account for effects of large wood on hydraulics
+        :return:
+        """
 
         roughness = self.d84/self.d50
         if roughness <= 2:
@@ -214,6 +228,12 @@ class FractionalTransport:
             return (coef * (d / self.d50) ** -0.6) + 0.03
 
     def tau_g_star_i(self, h_i, d):
+        """
+        Calculate the grain Shields stress for a given grain size
+        :param h_i: solved grain depth
+        :param d: grain size
+        :return:
+        """
 
         return (9810*h_i*self.s)/(1650*9.81*d)
 
@@ -226,6 +246,13 @@ class FractionalTransport:
         return err
 
     def calc_hi(self, d, q, h):
+        """
+        solve for depth if only mobile fractions were causing roughness
+        :param d: grain size
+        :param q: discharge
+        :param h: depth
+        :return:
+        """
         v0 = self.ferguson_vpe(h)*3
 
         res = minimize(self.err, v0, args=(d, q))
@@ -284,15 +311,18 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('stream_id', help='The name of the stream as entered in the Input_data csv files', type=str)
     parser.add_argument('reach_slope', help='A value for the reach averaged slope', type=float)
-    parser.add_argument('discharge_interval', help='The time (in seconds) between each discharge measurement in the discharge csv file', type=int)
-    parser.add_argument('--minimum_fraction', help='(optional) A minimum fraction to assign to fine grain size classes', type=float, default=0.005)
-    parser.add_argument('--lwd_factor', help='Alters the critical shields stress to account for the affects of large wood, None is no '
-                                             'wood present, 1 is some scattered pieces, 2 is wood throughout the reach and 3 is '
-                                             'jams present', type=int, default=None)
+    parser.add_argument('discharge_interval', help='The time (in seconds) between each discharge measurement in the '
+                                                   'discharge csv file', type=int)
+    parser.add_argument('--minimum_fraction', help='(optional) A minimum fraction to assign to fine grain size '
+                                                   'classes', type=float, default=0.005)
+    parser.add_argument('--lwd_factor', help='Alters the critical shields stress to account for the affects of large '
+                                             'wood, None is no wood present, 1 is some scattered pieces, 2 is wood '
+                                             'throughout the reach and 3 is jams present', type=int, default=None)
 
     args = parser.parse_args()
 
-    FractionalTransport(args.stream_id, args.reach_slope, args.discharge_interval, args.minimum_fraction, args.lwd_factor)
+    FractionalTransport(args.stream_id, args.reach_slope, args.discharge_interval, args.minimum_fraction,
+                        args.lwd_factor)
 
 
 if __name__ == '__main__':
