@@ -10,14 +10,14 @@ class CreatePlots:
     def __init__(self, stream_id):
 
         try:
-            self.df = pd.read_csv('../Outputs/{}/{}_qb.csv'.format(stream_id, stream_id))
+            self.df = pd.read_csv(f'../Outputs/{stream_id}/{stream_id}_qb.csv')
         except:
-            raise Exception('No output csv file that matches stream_id; dsp_transport must be run first')
+            raise FileNotFoundError('No output csv file that matches stream_id; dsp_transport must be run first')
 
-        if not os.path.isdir('../Outputs/{}/{}_figs'.format(stream_id, stream_id)):
-            os.mkdir('../Outputs/{}/{}_figs'.format(stream_id, stream_id))
+        if not os.path.isdir(f'../Outputs/{stream_id}/{stream_id}_figs'):
+            os.mkdir(f'../Outputs/{stream_id}/{stream_id}_figs')
 
-        self.out_path = '../Outputs/{}/{}_figs'.format(stream_id, stream_id)
+        self.out_path = f'../Outputs/{stream_id}/{stream_id}_figs'
 
         print('Creating plots')
         self.total_yield()
@@ -55,9 +55,9 @@ class CreatePlots:
 
         fig, ax = plt.subplots(figsize=(10, 6))
         ax.scatter(df1['Q'], df1['qb (kg/m/s)'], label='1-2 mm')
-        ax.scatter(df8['Q'], df8['qb (kg/m/s)'], label='8-12 mm')
-        ax.scatter(df32['Q'], df32['qb (kg/m/s)'], label='32-48 mm')
-        ax.scatter(df128['Q'], df128['qb (kg/m/s)'], label='128-192 mm')
+        ax.scatter(df8['Q'], df8['qb (kg/m/s)'], label='8-11 mm')
+        ax.scatter(df32['Q'], df32['qb (kg/m/s)'], label='32-45 mm')
+        ax.scatter(df128['Q'], df128['qb (kg/m/s)'], label='128-180 mm')
         ax.set_title('Fractional Transport Rates', fontsize=16, fontweight='bold')
         ax.set_xlabel(r'$Q (\frac{m^3}{s})$', fontsize=14)
         ax.set_ylabel(r'$q_b (kg m^{-1}s^{-1})$', fontsize=14)

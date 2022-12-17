@@ -22,7 +22,7 @@ setup(name='dsp_transport',
       version=version,
       author='Jordan Gilbert',
       license='MIT',
-      python_requires='>3.7',
+      python_requires='>=3.8',
       long_description=long_descr,
       author_email='jtgilbert89@gmail.com',
       install_requires=install_requires,
@@ -30,7 +30,9 @@ setup(name='dsp_transport',
       entry_points={
           "console_scripts": [
               'dsp_transport = dsp_transport.dsp_transport:main',
-              'plotting = dsp_transport.plotting:main'
+              'plotting = dsp_transport.plotting:main',
+              'generate_gsd = dsp_transport.generate_gsd:main',
+              'calc_transport = dsp_transport.calculate_transport:main'
           ]
       },
       url='https://github.com/jtgilbert/dynamic-stress-partitioning',
