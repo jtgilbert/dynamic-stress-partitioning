@@ -26,6 +26,28 @@ def calc_hi(d, q, h, d84, s, w):
 
     return h_adj
 
+def percentiles(fractions):
+    out_sizes = []
+    d_percentiles = [0.5, 0.84]
+    for p in d_percentiles:
+        cumulative = 0
+        grain_size = None
+        # while cumulative < p:
+        for size, fraction in fractions.items():
+            if cumulative < p:
+                cumulative += fraction
+                grain_size = size
+        for i, size in enumerate(fractions.keys()):
+            if size == grain_size:
+                low_size = list(fractions.keys())[i - 1] - 0.25
+                low_cum = cumulative - fractions[list(fractions.keys())[i - 1]]
+                high_size = grain_size - 0.25
+                high_cum = cumulative
+                p_out = ((low_cum / p) * low_size + (p / high_cum) * high_size) / ((low_cum / p) + (p / high_cum))
+                out_sizes.append(p_out)
+
+    return out_sizes[0], out_sizes[1]
+
 def transport(fractions: dict, slope:float, discharge: float, depth: float, width: float, interval: int):
     """
 
@@ -42,9 +64,10 @@ def transport(fractions: dict, slope:float, discharge: float, depth: float, widt
     transport_rates = {}
 
     # find D50 and D84 from GSD
-    d50 = 136
-    d84 = 260
-    roughness = d50/d84
+    d_sizes = percentiles(fractions)
+    d50 = d_sizes[0]
+    d84 = d_sizes[1]
+    roughness = d84/d50
 
     for size, frac in fractions.items():
         if roughness <= 2:
