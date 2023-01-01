@@ -219,13 +219,13 @@ class FractionalTransport:
             coef = 0.073
 
         if lwd_factor is None:
-            return coef*(d/self.d50)**-0.6
+            return coef*(d/self.d50)**-0.68
         elif lwd_factor == 1:
-            return (coef*(d/self.d50)**-0.6) + 0.01
+            return (coef*(d/self.d50)**-0.68) + 0.01
         elif lwd_factor == 2:
-            return (coef * (d / self.d50) ** -0.6) + 0.02
+            return (coef * (d / self.d50) ** -0.68) + 0.02
         elif lwd_factor == 3:
-            return (coef * (d / self.d50) ** -0.6) + 0.03
+            return (coef * (d / self.d50) ** -0.68) + 0.03
 
     def tau_g_star_i(self, h_i, d):
         """

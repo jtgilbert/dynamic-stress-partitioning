@@ -48,7 +48,8 @@ def percentiles(fractions):
 
     return out_sizes[0], out_sizes[1]
 
-def transport(fractions: dict, slope:float, discharge: float, depth: float, width: float, interval: int):
+def transport(fractions: dict, slope:float, discharge: float, depth: float, width: float, interval: int,
+              twod: bool = False, lwd_factor: int = None):
     """
 
     :param fractions: A python dictionary {size: fraction in bed} with all size classes and the fraction of the bed
@@ -61,15 +62,27 @@ def transport(fractions: dict, slope:float, discharge: float, depth: float, widt
     :return: A dictionary with transport rate and total transport for each size fraction
     """
 
-    transport_rates = {}
+    if twod is False:
+        transport_rates = {}
+    else:
+        transport_rates = {'bed': {}, 'wall': {}}
 
     # find D50 and D84 from GSD
-    d_sizes = percentiles(fractions)
-    d50 = d_sizes[0]
-    d84 = d_sizes[1]
+    if twod is False:
+        d_sizes = percentiles(fractions)
+    else:
+        d_sizes = percentiles(fractions['bed'])
+    d50 = 2**(-d_sizes[0]) / 1000
+    d84 = 2**(-d_sizes[1]) / 1000
     roughness = d84/d50
 
-    for size, frac in fractions.items():
+    if twod is False:
+        fractionssub = fractions
+    else:
+        fractionssub = fractions['bed']
+
+    for size_phi, frac in fractionssub.items():
+        size = 2**-size_phi / 1000
         if roughness <= 2:
             tau_star_coef = 0.025
         elif 2 < roughness < 3.5:
@@ -77,23 +90,60 @@ def transport(fractions: dict, slope:float, discharge: float, depth: float, widt
         else:
             tau_star_coef = 0.073
 
-        h_i = calc_hi(size, discharge, depth, d84, slope, width)
+        if lwd_factor == 1:
+            tau_star_coef = tau_star_coef + 0.01
+        if lwd_factor == 2:
+            tau_star_coef = tau_star_coef + 0.02
+        if lwd_factor == 3:
+            tau_star_coef = tau_star_coef + 0.03
 
-        tau_star_crit = tau_star_coef * (size/d50) ** -0.68
+        h_i = calc_hi(size, discharge, depth, d84, slope, width)
+        tau_star_crit = tau_star_coef * (size / d50) ** -0.68
         tau_star = (9810 * h_i * slope) / (1650 * 9.81 * size)
 
-        ratio = tau_star / tau_star_crit
-        if ratio < 1.8:
-            wi_star = 0.0015 * ratio ** 7.5
+        if twod is False:
+            ratio = tau_star / tau_star_crit
+            if ratio < 1.8:
+                wi_star = 0.0015 * ratio ** 7.5
+            else:
+                wi_star = 14 * (1 - (1.0386 / ratio ** 0.9)) ** 5
+
+            # convert from wi_star to qs
+            q_b = (wi_star * (frac * 100) * (9.81 * depth * slope) ** (3 / 2)) / (1.65 * 9.81)
+            Qb = q_b * width
+            tot = Qb * interval
+
+            transport_rates[size_phi] = [q_b, tot]
+
         else:
-            wi_star = 14 * (1 - (1.0386 / ratio ** 0.9)) ** 5
+            wall_frac = 1.9534 * (width/depth) ** -1.12  # based on Pan et al 2020 (https://www.tandfonline.com/doi/full/10.1080/00221686.2020.1818318?casa_token=E-zYFFoAlSUAAAAA%3Am-yS_bCnb25Mey6KoglKydPB-1PuhyPdIIcafqib3Kswe09LD72p4w1k4qCOEAL7XZ2OdJlVnmM)
+            tau_bed = tau_star / (wall_frac + 1)
+            tau_wall = wall_frac * tau_bed
 
-        # convert from wi_star to qs
-        q_b = (wi_star * (frac * 100) * (9.81 * depth * slope) ** (3 / 2)) / (1.65 * 9.81)
-        Qb = q_b * width
-        tot = Qb * interval
+            ratio_bed = tau_bed / tau_star_crit
+            if ratio_bed < 1.8:
+                wi_star_bed = 0.0015 * ratio_bed ** 7.5
+            else:
+                wi_star_bed = 14 * (1 - (1.0386 / ratio_bed ** 0.9)) ** 5
 
-        transport_rates[size] = [q_b, tot]
+            # convert from wi_star to qs
+            q_b_bed = (wi_star_bed * (frac * 100) * (9.81 * depth * slope) ** (3 / 2)) / (1.65 * 9.81)
+            Qb_bed = q_b_bed * width
+            tot_bed = Qb_bed * interval
+
+            ratio_wall = tau_wall / tau_star_crit
+            if ratio_wall < 1.8:
+                wi_star_wall = 0.0015 * ratio_wall ** 7.5
+            else:
+                wi_star_wall = 14 * (1 - (1.0386 / ratio_wall ** 0.9)) ** 5
+
+            # convert from wi_star to qs
+            q_b_wall = (wi_star_wall * (fractions['wall'][size_phi] * 100) * (9.81 * depth * slope) ** (3 / 2)) / (1.65 * 9.81)
+            Qb_wall = q_b_wall * (2 * depth)
+            tot_wall = Qb_wall * interval
+
+            transport_rates['bed'].update({size_phi: [q_b_bed, tot_bed]})
+            transport_rates['wall'].update({size_phi: [q_b_wall, tot_wall]})
 
     return transport_rates
 
