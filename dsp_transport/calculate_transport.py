@@ -20,7 +20,7 @@ def calc_hi(d, q, h, d84, s, w):
 
     res = minimize(err, v0, args=(d, q, s, w))
     if res.x[0] <= 0.01:
-        print('Very low or negative velocity solution: setting to 0.01 m/s')
+        print(f'Very low or negative velocity solution for flow: {q}, size: {d}; setting to 0.01')
         res.x[0] = 0.01
     h_adj = d ** 0.25 * ((res.x[0] ** 1.5 / (9.81 * s) ** 0.75) / 22.627)
 
@@ -84,21 +84,21 @@ def transport(fractions: dict, slope:float, discharge: float, depth: float, widt
     for size_phi, frac in fractionssub.items():
         size = 2**-size_phi / 1000
         if roughness <= 2:
-            tau_star_coef = 0.025
-        elif 2 < roughness < 3.5:
-            tau_star_coef = 0.087 * np.log(roughness) - 0.034
+            tau_star_coef = 0.029
         else:
-            tau_star_coef = 0.073
-
-        if lwd_factor == 1:
-            tau_star_coef = tau_star_coef + 0.01
-        if lwd_factor == 2:
-            tau_star_coef = tau_star_coef + 0.02
-        if lwd_factor == 3:
-            tau_star_coef = tau_star_coef + 0.03
+            tau_star_coef = 0.043 * np.log(roughness) - 0.0005
 
         h_i = calc_hi(size, discharge, depth, d84, slope, width)
-        tau_star_crit = tau_star_coef * (size / d50) ** -0.68
+
+        if lwd_factor is None:
+            tau_star_crit = tau_star_coef * (size / d50) ** -0.67
+        elif lwd_factor == 1:
+            tau_star_crit = (tau_star_coef * (size / d50) ** -0.67) + 0.01
+        elif lwd_factor == 2:
+            tau_star_crit = (tau_star_coef * (size / d50) ** -0.67) + 0.02
+        elif lwd_factor == 3:
+            tau_star_crit = (tau_star_coef * (size / d50) ** -0.67) + 0.03
+
         tau_star = (9810 * h_i * slope) / (1650 * 9.81 * size)
 
         if twod is False:

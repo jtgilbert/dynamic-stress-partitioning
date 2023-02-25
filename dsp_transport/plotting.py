@@ -34,6 +34,7 @@ class CreatePlots:
                 y_dict[self.df.loc[i, 'Q']] = y_dict[self.df.loc[i, 'Q']] + self.df.loc[i, 'Yield (kg)']
 
         y_vals = list(y_dict.values())
+        y_vals = [val for val in y_vals if not np.isnan(val)]
 
         fig, ax = plt.subplots(figsize=(10, 6))
         ax.plot(y_vals, linewidth=1, c='k')
@@ -80,3 +81,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
