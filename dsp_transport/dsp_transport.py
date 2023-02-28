@@ -114,7 +114,7 @@ class FractionalTransport:
         d_dict = {}
 
         # set up the size ranges
-        intervals = [[0.5,1],[1,2],[2,2.8],[2.8,4],[4,5.7],[5.7,8],[8,11.3],[11.3,16],[16,22.6],[22.6,32],[32,45],[45,64],[64,91],
+        intervals = [[0.5,1],[1,2],[2,4],[4,8],[8,11.3],[11.3,16],[16,22.6],[22.6,32],[32,45],[45,64],[64,91],
                      [91,128],[128,181],[181,256],[256,5000]]
 
         # append values to the dictionary
@@ -125,7 +125,7 @@ class FractionalTransport:
                     count += 1
             d_dict[i[0]/1000] = count/len(self.d_df)
             if self.minimum_fraction is not None:
-                if count/len(self.d_df) < self.minimum_fraction and i[0] <= 2.8:
+                if count/len(self.d_df) < self.minimum_fraction and i[0] <= 4:
                     d_dict[i[0]/1000] = self.minimum_fraction
 
         # correct for a total > 1 due to enforcing a minimum fraction (SHOULD THIS CHANGE D50??)
@@ -147,6 +147,11 @@ class FractionalTransport:
         d_dict_adj = {}
         for key, value in d_dict.items():
             d_dict_adj[key] = tmp_vals[key] / denom
+
+        updatekeys = [0.0005, 0.001, 0.002]
+        update_val = d_dict_adj[0.0005] + d_dict_adj[0.001] + d_dict_adj[0.002]
+        for i in updatekeys:
+            d_dict_adj[i] = update_val
 
         logging.info('grain size fractions adjusted for area: %s', str(d_dict_adj))
 
@@ -334,12 +339,12 @@ def main():
                         args.lwd_factor)
 
 
-#if __name__ == '__main__':
-#    main()
+if __name__ == '__main__':
+    main()
 
 
-si = 'Blodgett'
-slope = 0.013
-inter = 900
+#si = 'Blodgett'
+#slope = 0.013
+#inter = 900
 #
-FractionalTransport(si, slope, inter, minimum_fraction=0.015)
+#FractionalTransport(si, slope, inter, minimum_fraction=0.02)

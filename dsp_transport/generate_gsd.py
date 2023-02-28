@@ -5,48 +5,25 @@ import pandas as pd
 import argparse
 
 
-def med_err(loc, a, scale, med_obs, p_sand=None):
+def med_err(loc, a, scale, med_obs):
     dist = stats.skewnorm(a, loc, scale).rvs(10000)
-    #dist = dist**2
-    #dist = dist[dist > 0.0005]  # gets rid of sub-zero values (makes it sand and greater)
-    if p_sand:
-        num_sand = p_sand * len(dist)
-        finesand = np.empty(int(num_sand/2))
-        finesand.fill(-1)
-        coarsesand = np.empty(int(num_sand/2))
-        coarsesand.fill(0)
-        dist = np.concatenate([dist, finesand, coarsesand])
     med_est = np.percentile(dist, 50)
     err = (np.log2(med_obs) - med_est) ** 2
 
     return err
 
 
-def std_err(scale, a, loc, d16, d84, p_sand=None):
+def loc_err(loc, a, scale, d84):
     dist = stats.skewnorm(a, loc, scale).rvs(10000)
-    #dist = dist**2
-    #dist = dist[dist > 0.0005]
-    if p_sand:
-        num_sand = p_sand * len(dist)
-        finesand = np.empty(int(num_sand/2))
-        finesand.fill(-1)
-        coarsesand = np.empty(int(num_sand/2))
-        coarsesand.fill(0)
-        dist = np.concatenate([dist, finesand, coarsesand])
-    err = (np.percentile(dist, 16) - np.log2(d16)) ** 2 + (np.percentile(dist, 84) - np.log2(d84)) ** 2
+    med_est = np.percentile(dist, 84)
+    err = (np.log2(d84) - med_est) ** 2
 
     return err
 
-def skew_err(a, loc, scale, dmax, dmin, p_sand):
+
+def scale_err(scale, a, loc, d50):
     dist = stats.skewnorm(a, loc, scale).rvs(10000)
-    if p_sand:
-        num_sand = p_sand * len(dist)
-        finesand = np.empty(int(num_sand/2))
-        finesand.fill(-1)
-        coarsesand = np.empty(int(num_sand/2))
-        coarsesand.fill(0)
-        dist = np.concatenate([dist, finesand, coarsesand])
-    err = (np.max(dist) - np.log2(dmax)) ** 2 + (np.min(dist) - np.log2(dmin)) ** 2
+    err = (np.percentile(dist, 50) - np.log2(d50)) ** 2
 
     return err
 
@@ -73,55 +50,20 @@ def generate_distribution(csv_out: str, num_obs: int, csv_in: str = None, d50: i
         raise Exception('If no grain count data is provided (csv_in) you must provide D50, D16, and D84 values')
 
     if csv_in is None:
-        a, loc, scale = -10, 7.5, 2.5
+        a, loc, scale = -7, 6, 2.5
         d50_p, d16_p, d84_p = d50, d16, d84
+
         print(f'Input D50: {d50}')
         print(f'Input D16: {d16}')
         print(f'Input D84: {d84}')
 
     else:
         indata = pd.read_csv(csv_in)
-        # indata_trans = np.sqrt(indata['D'] / 1000)
-        # k2, pval = stats.normaltest(indata_trans)
-        # if pval < 1e-3:
-        #     print('p-value: ', pval, ' indicates that the transformed grain size distribution may not be normal')
-        in_data_trans = []
-        for i in list(indata['D']):
-            if i < 2:
-                continue
-            elif 2 <= i < 4:
-                in_data_trans.append(1)
-            elif 4 <= i < 8:
-                in_data_trans.append(2)
-            elif 8 <= i <= 11.3:
-                in_data_trans.append(3)
-            elif 11.3 <= i < 16:
-                in_data_trans.append(3.5)
-            elif 16 <= i < 22.6:
-                in_data_trans.append(4)
-            elif 22.6 <= i < 32:
-                in_data_trans.append(4.5)
-            elif 32 <= i < 45:
-                in_data_trans.append(5)
-            elif 45 <= i < 64:
-                in_data_trans.append(5.5)
-            elif 64 <= i < 90:
-                in_data_trans.append(6)
-            elif 90 <= i < 128:
-                in_data_trans.append(6.5)
-            elif 128 <= i < 180:
-                in_data_trans.append(7)
-            elif 180 <= i < 256:
-                in_data_trans.append(7.5)
-            elif 256 <= i < 360:
-                in_data_trans.append(8)
-            elif 360 <= i < 512:
-                in_data_trans.append(8.5)
-            elif i >= 512:
-                in_data_trans.append(9)
+        in_data_trans = [np.log2(i) for i in list(indata['D'])]
 
         params = stats.skewnorm.fit(in_data_trans)
         a, loc, scale = params[0], params[1], params[2]
+        print(f'a: {a}, loc: {loc}, scale: {scale}')
 
         if d50 is not None:
             d50_p = d50
@@ -140,18 +82,16 @@ def generate_distribution(csv_out: str, num_obs: int, csv_in: str = None, d50: i
         print(f'Data D16: {d16_p}')
         print(f'Data D84: {d84_p}')
 
-
-
-    res = fmin(med_err, loc, args=(a, scale, d50_p, p_sand))
+    res = fmin(loc_err, loc, args=(a, scale, d84_p))
     loc_opt = res[0]
 
-    res2 = fmin(std_err, scale, args=(a, loc_opt, d16_p, d84_p, p_sand))
+    res2 = fmin(scale_err, scale, args=(a, loc_opt, d50_p))
     scale_opt = res2[0]
+
+    #res3 = fmin(skew_err, a, args=(loc_opt, scale,))
 
     new_data = stats.skewnorm(a, loc_opt, scale_opt).rvs(num_obs)
 
-    #new_data = ((new_data**2)*1000)
-    #new_data = new_data[new_data >= 0.5]
     if p_sand is not None:
         num_sand = p_sand * len(new_data)
         finesand = np.empty(int(num_sand/2))
@@ -184,8 +124,7 @@ def main():
                                          'distribution parameters and find D50, D16, and D84 if not provided.'
                                          'If no input csv is entered, values MUST be provided for D50, D16, and D84'
                                          'The csv should have a column with header "D" containing grain size counts'
-                                         'in millimeters',
-                        type=str)
+                                         'in millimeters', type=str)
     parser.add_argument('--d50', help='A value for D50 (mm). If no input csv is entered, a value for D50 must be '
                                       'provided. If an input csv IS entered, the calculated D50 can be overridden '
                                       'by providing a value here', type=int)
@@ -204,5 +143,7 @@ def main():
     generate_distribution(args.csv_out, args.num_obs, args.csv_in, args.d50, args.d16, args.d84, args.p_sand, args.dmax)
 
 
-if __name__ == '__main__':
-    main()
+#if __name__ == '__main__':
+#    main()
+
+generate_distribution('../Input_data/woods_generated2.csv', 250, csv_in='../Input_data/Woods_D.csv', d84=100, p_sand=0.05)
