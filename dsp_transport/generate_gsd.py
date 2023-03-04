@@ -146,4 +146,4 @@ def main():
 #if __name__ == '__main__':
 #    main()
 
-generate_distribution('../Input_data/woods_generated2.csv', 250, csv_in='../Input_data/Woods_D.csv', d84=100, p_sand=0.05)
+generate_distribution('../Input_data/blodgett_generated3.csv', 250, csv_in='../Input_data/Blodgett_D.csv', d84=170, p_sand=0.02)
