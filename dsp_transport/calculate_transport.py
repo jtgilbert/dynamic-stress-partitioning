@@ -118,6 +118,9 @@ def transport(fractions: dict, slope:float, discharge: float, depth: float, widt
 
         if twod is False:
             ratio = tau_star / tau_star_crit
+            min_ratio = (0.02 * (size / d50) ** -0.67) / tau_star_crit
+            if ratio < min_ratio:
+                ratio = 0
             if ratio < 2:
                 wi_star = 0.0002 * ratio ** 13
             else:
@@ -137,6 +140,9 @@ def transport(fractions: dict, slope:float, discharge: float, depth: float, widt
             tau_wall = wall_frac * tau_bed
 
             ratio_bed = tau_bed / tau_star_crit
+            min_ratio_bed = (0.02 * (size / d50) ** -0.67) / tau_star_crit
+            if ratio_bed < min_ratio_bed:
+                ratio = 0
             if ratio_bed < 2:
                 wi_star_bed = 0.0002 * ratio_bed ** 13
             else:
@@ -190,5 +196,6 @@ if __name__ == '__main__':
 #          -6: 0.15, -6.5: 0.18, -7: 0.08, -7.5: 0.05, -8: 0.02},
 #          'wall': {1: 0.01, 0: 0.01, -1: 0.01, -2: 0.01, -3: 0.02, -3.5: 0.02, -4: 0.04, -4.5: 0.05, -5: 0.1, -5.5: 0.12,
 #          -6: 0.15, -6.5: 0.18, -7: 0.08, -7.5: 0.05, -8: 0.02}}
-
-# transport(fracs, 0.013, 4.3, 0.42, 13.6, 900, twod=True)
+#
+# tr = transport(fracs, 0.013, 7, 0.42, 13.6, 900, twod=True)
+# print(tr)

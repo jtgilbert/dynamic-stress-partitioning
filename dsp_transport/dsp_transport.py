@@ -296,7 +296,7 @@ class FractionalTransport:
                 w = self.calc_w_from_h(h)
                 tau_g_star_i = self.tau_g_star_i(hi, d)
                 ratio = tau_g_star_i/tau_gc_star_i
-                min_ratio = (0.02*(d/self.d50)**-0.65)/tau_gc_star_i
+                min_ratio = (0.02*(d/self.d50)**-0.67)/tau_gc_star_i
                 if ratio < min_ratio:
                     ratio = 0
                 if ratio < 2:
