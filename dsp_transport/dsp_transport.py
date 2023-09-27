@@ -84,8 +84,8 @@ class FractionalTransport:
         logging.info('depth equation: h = %s * Q ^ %s', str(self.h_coef), str(self.h_exponent))
 
         # to find width for any depth
-        self.w_coef, self.w_intercept = self.width_from_depth_params()
-        logging.info('width equation: w = %s * Q + %s', str(self.w_coef), str(self.w_intercept))
+        self.w_coef, self.w_exponent = self.width_from_depth_params()
+        logging.info('width equation: w = %s * h ^ %s', str(self.w_coef), str(self.w_exponent))
 
         # set up output table - columns:
         q = self.q_df['Q']
@@ -114,7 +114,7 @@ class FractionalTransport:
         d_dict = {}
 
         # set up the size ranges
-        intervals = [[0.5,1],[1,2],[2,2.8],[2.8,4],[4,5.7],[5.7,8],[8,11.3],[11.3,16],[16,22.6],[22.6,32],[32,45],[45,64],[64,91],
+        intervals = [[0.5,1],[1,2],[2,4],[4,8],[8,11.3],[11.3,16],[16,22.6],[22.6,32],[32,45],[45,64],[64,91],
                      [91,128],[128,181],[181,256],[256,5000]]
 
         # append values to the dictionary
@@ -125,7 +125,7 @@ class FractionalTransport:
                     count += 1
             d_dict[i[0]/1000] = count/len(self.d_df)
             if self.minimum_fraction is not None:
-                if count/len(self.d_df) < self.minimum_fraction and i[0] <= 8:
+                if count/len(self.d_df) < self.minimum_fraction and i[0] <= 4:
                     d_dict[i[0]/1000] = self.minimum_fraction
 
         # correct for a total > 1 due to enforcing a minimum fraction (SHOULD THIS CHANGE D50??)
@@ -139,10 +139,26 @@ class FractionalTransport:
 
         logging.info('grain size fractions (size (m): Fraction): %s', str(d_dict))
 
-        return d_dict
+        tmp_vals = {}
+        for key, value in d_dict.items():
+            tmp_vals[key] = (value * (key/self.d50)**2)
+        denom = np.sum(list(tmp_vals.values()))
+
+        d_dict_adj = {}
+        for key, value in d_dict.items():
+            d_dict_adj[key] = tmp_vals[key] / denom
+
+        updatekeys = [0.0005, 0.001, 0.002]
+        update_val = d_dict_adj[0.0005] + d_dict_adj[0.001] + d_dict_adj[0.002]
+        for i in updatekeys:
+            d_dict_adj[i] = update_val
+
+        logging.info('grain size fractions adjusted for area: %s', str(d_dict_adj))
+
+        return d_dict_adj
 
     # use function with hydraulic geometry data to come up with relationship width as function of depth
-    # this (as is now) assumes a linear relationship between width and depth (instead of choosing between log and exp)
+    # this (as is now) assumes a power function relationship between width and depth
     def width_from_depth_params(self):  # maybe change to do two types of regression compare r2 and use the better
         """
         comes up with the coefficient and intercept for a linear regression of width as a function depth
@@ -150,14 +166,14 @@ class FractionalTransport:
         :return:
         """
 
-        x_data = np.array(self.geom_df['h']).reshape(-1, 1)
-        y_data = np.array(self.geom_df['w'])
+        x_data = np.array(np.log(self.geom_df['h'])).reshape(-1, 1)
+        y_data = np.array(np.log(self.geom_df['w']))
         lr = LinearRegression()
         lr.fit(x_data, y_data)
         print('depth-width r2: ', str(lr.score(x_data, y_data)))
 
         logging.info('r-squared for width-depth relationship: %s', str(lr.score(x_data, y_data)))
-        return lr.coef_[0], lr.intercept_
+        return np.exp(lr.intercept_), lr.coef_[0]
 
     def calc_w_from_h(self, h):
         """
@@ -166,7 +182,7 @@ class FractionalTransport:
         :return:
         """
 
-        return self.w_coef*h+self.w_intercept
+        return self.w_coef*h**self.w_exponent
 
     def ferguson_vpe(self, h):
         """
@@ -202,7 +218,7 @@ class FractionalTransport:
 
         return self.h_coef*q**self.h_exponent
 
-    def tau_gc_star_i(self, d, lwd_factor):
+    def tau_gc_star_i(self, d, lwd_factor=None):
         """
         Calculate the value for critical grain Shields stress for a grain size fraction
         :param d: the grain size
@@ -212,20 +228,18 @@ class FractionalTransport:
 
         roughness = self.d84/self.d50
         if roughness <= 2:
-            coef = 0.025
-        elif 2 < roughness < 3.5:
-            coef = 0.087*np.log(roughness)-0.034
+            coef = 0.029
         else:
-            coef = 0.073
+            coef = 0.043*np.log(roughness)-0.0005
 
         if lwd_factor is None:
-            return coef*(d/self.d50)**-0.6
+            return coef * (d/self.d50) ** -0.67
         elif lwd_factor == 1:
-            return (coef*(d/self.d50)**-0.6) + 0.01
+            return (coef * (d/self.d50) ** -0.67) + 0.01
         elif lwd_factor == 2:
-            return (coef * (d / self.d50) ** -0.6) + 0.02
+            return (coef * (d / self.d50) ** -0.67) + 0.02
         elif lwd_factor == 3:
-            return (coef * (d / self.d50) ** -0.6) + 0.03
+            return (coef * (d / self.d50) ** -0.67) + 0.03
 
     def tau_g_star_i(self, h_i, d):
         """
@@ -253,13 +267,13 @@ class FractionalTransport:
         :param h: depth
         :return:
         """
-        v0 = self.ferguson_vpe(h)*3
+        v0 = self.ferguson_vpe(h)*2
 
         res = minimize(self.err, v0, args=(d, q))
         if res.x[0] <= 0.01:
-            print('Very low or negative velocity solution: setting to 0.01 m/s')
-            logging.info('Very low or negative velocity solution, setting to 0.01 m/s')
-            res.x[0] = 0.01
+            print('Very low or negative velocity solution (< 0.01 m/s)')
+            logging.info(f'Very low or negative velocity solution at flow: {q}, size: {d}')
+        #    res.x[0] = 0.01
         h_adj = d ** 0.25 * ((res.x[0] ** 1.5 / (9.81 * self.s) ** 0.75) / 22.627)
 
         return h_adj
@@ -273,31 +287,31 @@ class FractionalTransport:
         logging.info(f'Calculations started: %s', str(datetime.now().strftime("%d/%m/%Y %H:%M:%S")))
 
         for i in tqdm(self.q_df.index):
-            # sleep(10)
-            # print('for discharge entry {} of {}'.format(i, len(self.q_df)))
             q = self.q_df.loc[i, 'Q']
             h = self.calc_h_from_q(q)
+
             for d in self.d_fractions.keys():
                 tau_gc_star_i = self.tau_gc_star_i(d, self.lwd_factor)
                 hi = self.calc_hi(d, q, h)
                 w = self.calc_w_from_h(h)
                 tau_g_star_i = self.tau_g_star_i(hi, d)
                 ratio = tau_g_star_i/tau_gc_star_i
-                min_ratio = (0.017*(d/self.d50)**-0.65)/tau_gc_star_i
+                min_ratio = (0.02*(d/self.d50)**-0.67)/tau_gc_star_i
                 if ratio < min_ratio:
                     ratio = 0
-                if ratio < 1.8:
-                    wi_star = 0.0015*ratio**7.5
+                if ratio < 2:
+                    wi_star = 0.0002 * ratio**13
                 else:
-                    wi_star = 14*(1-(1.0386/ratio**0.9))**5
+                    wi_star = 100 * (1 - (1.348 / ratio**2))**10
 
                 # convert from wi_star to qs
-                q_b = (wi_star*(self.d_fractions[d]*100)*(9.81*h*self.s)**(3/2)) / (1.65*9.81)
-                Qb = q_b * w
+                q_b_vol = (wi_star * self.d_fractions[d] * (9.81 * h * self.s)**(3/2)) / (1.65 * 9.81)
+                q_b_mass = q_b_vol * 2650
+                Qb = q_b_mass * w
                 tot = Qb*self.discharge_interval
 
                 # add result to output table
-                self.out_df.loc[q, d] = [q_b, Qb, tot]
+                self.out_df.loc[q, d] = [q_b_mass, Qb, tot]
                 # self.out_df.loc[len(self.out_df)]=[q, d, q_b, Qb]
 
         logging.info('Calculations ended: %s', str(datetime.now().strftime("%d/%m/%Y %H:%M:%S")))
@@ -327,3 +341,10 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
+#si = 'Blodgett'
+#slope = 0.013
+#inter = 900
+#
+#FractionalTransport(si, slope, inter, minimum_fraction=0.02)

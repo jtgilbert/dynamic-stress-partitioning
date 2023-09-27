@@ -1,5 +1,6 @@
 import argparse
 import numpy as np
+from math import floor
 from scipy.optimize import minimize
 
 
@@ -16,11 +17,11 @@ def ferguson_vpe(h, d84, s):  # could maybe strip depth out of this and just giv
     return v_est
 
 def calc_hi(d, q, h, d84, s, w):
-    v0 = ferguson_vpe(h, d84, s)*3
+    v0 = ferguson_vpe(h, d84, s)*2
 
     res = minimize(err, v0, args=(d, q, s, w))
     if res.x[0] <= 0.01:
-        print('Very low or negative velocity solution: setting to 0.01 m/s')
+        print(f'Very low or negative velocity solution for flow: {q}, size: {d}; setting to 0.01')
         res.x[0] = 0.01
     h_adj = d ** 0.25 * ((res.x[0] ** 1.5 / (9.81 * s) ** 0.75) / 22.627)
 
@@ -48,7 +49,8 @@ def percentiles(fractions):
 
     return out_sizes[0], out_sizes[1]
 
-def transport(fractions: dict, slope:float, discharge: float, depth: float, width: float, interval: int):
+def transport(fractions: dict, slope:float, discharge: float, depth: float, width: float, interval: int,
+              twod: bool = False, lwd_factor: int = None):
     """
 
     :param fractions: A python dictionary {size: fraction in bed} with all size classes and the fraction of the bed
@@ -61,39 +63,136 @@ def transport(fractions: dict, slope:float, discharge: float, depth: float, widt
     :return: A dictionary with transport rate and total transport for each size fraction
     """
 
-    transport_rates = {}
+    minimum_mass = {
+        1: 1.73442094416937E-07,
+        0: 1.38753675533549E-06,
+        -1: 1.11002940426839E-05,
+        -2: 8.88023523414715E-05,
+        -2.5: 0.000251170982104,
+        -3: 0.000710418818732,
+        -3.5: 0.002009367856831,
+        -4: 0.005683350549854,
+        - 4.5: 0.016074942854649,
+        -5: 0.045466804398833,
+        -5.5: 0.12859954283719,
+        -6: 0.363734435190667,
+        -6.5: 1.02879634269752,
+        -7: 2.90987548152534,
+        -7.5: 8.23037074158015,
+        -8: 23.2790038522027,
+        -8.5: 65.8429659326412,
+        - 9: 186.232030817622
+    }
+
+    if twod is False:
+        transport_rates = {}
+    else:
+        transport_rates = {'bed': {}, 'wall': {}}
 
     # find D50 and D84 from GSD
-    d_sizes = percentiles(fractions)
-    d50 = d_sizes[0]
-    d84 = d_sizes[1]
+    if twod is False:
+        d_sizes = percentiles(fractions)
+    else:
+        d_sizes = percentiles(fractions['bed'])
+    d50 = 2**(-d_sizes[0]) / 1000
+    d84 = 2**(-d_sizes[1]) / 1000
     roughness = d84/d50
 
-    for size, frac in fractions.items():
+    if twod is False:
+        fractionss = fractions
+    else:
+        fractionss = fractions['bed']
+
+    # adjust fraction sub to area
+    tmp_vals = {}
+    for key, value in fractionss.items():
+        tmp_vals[key] = (value * ((2**-key / 1000) / d50) ** 2)
+    denom = np.sum(list(tmp_vals.values()))
+
+    fractionssub = {}
+    for key, value in fractionss.items():
+        fractionssub[key] = tmp_vals[key] / denom
+
+    # updatekeys = [1,0,-1]
+    # update_val = fractionssub[1] + fractionssub[0] + fractionssub[-1]
+    # for i in updatekeys:
+    #     fractionssub[i] = update_val
+
+    for size_phi, frac in fractionssub.items():
+        size = 2**-size_phi / 1000
         if roughness <= 2:
-            tau_star_coef = 0.025
-        elif 2 < roughness < 3.5:
-            tau_star_coef = 0.087 * np.log(roughness) - 0.034
+            tau_star_coef = 0.029
         else:
-            tau_star_coef = 0.073
+            tau_star_coef = 0.043 * np.log(roughness) - 0.0005
 
         h_i = calc_hi(size, discharge, depth, d84, slope, width)
 
-        tau_star_crit = tau_star_coef * (size/d50) ** -0.68
+        if lwd_factor is None:
+            tau_star_crit = max(tau_star_coef * (size / d50) ** -0.67, 0.03)
+        elif lwd_factor == 1:
+            tau_star_crit = (tau_star_coef * (size / d50) ** -0.67) + 0.01
+        elif lwd_factor == 2:
+            tau_star_crit = (tau_star_coef * (size / d50) ** -0.67) + 0.02
+        elif lwd_factor == 3:
+            tau_star_crit = (tau_star_coef * (size / d50) ** -0.67) + 0.03
+
         tau_star = (9810 * h_i * slope) / (1650 * 9.81 * size)
 
-        ratio = tau_star / tau_star_crit
-        if ratio < 1.8:
-            wi_star = 0.0015 * ratio ** 7.5
+        if twod is False:
+            ratio = tau_star / tau_star_crit
+            min_ratio = (0.025 * (size / d50) ** -0.67) / tau_star_crit
+            if ratio < min_ratio:
+                ratio = 0
+            if ratio < 2:
+                wi_star = 0.0002 * ratio ** 13
+            else:
+                wi_star = 100 * (1 - (1.348 / ratio ** 2)) ** 10
+
+            # convert from wi_star to qs
+            q_b_vol = (wi_star * frac * (9.81 * depth * slope) ** (3 / 2)) / (1.65 * 9.81)
+            q_b_mass = q_b_vol * 2650
+            Qb = floor((q_b_mass * width) / minimum_mass[size_phi]) * minimum_mass[size_phi]
+            q_b_mass = Qb / width
+            tot = Qb * interval
+
+            transport_rates[size_phi] = [q_b_mass, tot]
+
         else:
-            wi_star = 14 * (1 - (1.0386 / ratio ** 0.9)) ** 5
+            wall_frac = 1.9534 * (width/depth) ** -1.12  # based on Pan et al 2020 (https://www.tandfonline.com/doi/full/10.1080/00221686.2020.1818318?casa_token=E-zYFFoAlSUAAAAA%3Am-yS_bCnb25Mey6KoglKydPB-1PuhyPdIIcafqib3Kswe09LD72p4w1k4qCOEAL7XZ2OdJlVnmM)
+            tau_bed = tau_star / (wall_frac + 1)
+            tau_wall = wall_frac * tau_bed
 
-        # convert from wi_star to qs
-        q_b = (wi_star * (frac * 100) * (9.81 * depth * slope) ** (3 / 2)) / (1.65 * 9.81)
-        Qb = q_b * width
-        tot = Qb * interval
+            ratio_bed = tau_bed / tau_star_crit
+            min_ratio_bed = (0.02 * (size / d50) ** -0.67) / tau_star_crit
+            if ratio_bed < min_ratio_bed:
+                ratio = 0
+            if ratio_bed < 2:
+                wi_star_bed = 0.0002 * ratio_bed ** 13
+            else:
+                wi_star_bed = 100 * (1 - (1.348 / ratio_bed ** 2)) ** 10
 
-        transport_rates[size] = [q_b, tot]
+            # convert from wi_star to qs
+            q_b_bed_vol = (wi_star_bed * frac * (9.81 * depth * slope) ** (3 / 2)) / (1.65 * 9.81)
+            q_b_bed_mass = q_b_bed_vol * 2650
+            Qb_bed = floor((q_b_bed_mass * width) / minimum_mass[size_phi]) * minimum_mass[size_phi]
+            q_b_bed_mass = Qb_bed / width
+            tot_bed = Qb_bed * interval
+
+            ratio_wall = tau_wall / tau_star_crit
+            # if ratio_wall < 1.8:
+            wi_star_wall = 0.00005 * ratio_wall ** 6
+            # else:
+            #     wi_star_wall = 14 * (1 - (1.0386 / ratio_wall ** 0.9)) ** 5
+
+            # convert from wi_star to qs
+            q_b_wall_vol = (wi_star_wall * fractions['wall'][size_phi] * (9.81 * depth * slope) ** (3 / 2)) / (1.65 * 9.81)
+            q_b_wall_mass = q_b_wall_vol * 2650
+            Qb_wall = floor((q_b_wall_mass * (2 * depth)) / minimum_mass[size_phi]) * minimum_mass[size_phi]
+            q_b_wall_mass = Qb_wall / (2 * depth)
+            tot_wall = Qb_wall * interval
+
+            transport_rates['bed'].update({size_phi: [q_b_bed_mass, tot_bed]})
+            transport_rates['wall'].update({size_phi: [q_b_wall_mass, tot_wall]})
 
     return transport_rates
 
@@ -117,3 +216,11 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+# fracs = {'bed': {1: 0.01, 0: 0.01, -1: 0.01, -2: 0.01, -3: 0.02, -3.5: 0.02, -4: 0.04, -4.5: 0.05, -5: 0.1, -5.5: 0.12,
+#          -6: 0.15, -6.5: 0.18, -7: 0.08, -7.5: 0.05, -8: 0.02},
+#          'wall': {1: 0.01, 0: 0.01, -1: 0.01, -2: 0.01, -3: 0.02, -3.5: 0.02, -4: 0.04, -4.5: 0.05, -5: 0.1, -5.5: 0.12,
+#          -6: 0.15, -6.5: 0.18, -7: 0.08, -7.5: 0.05, -8: 0.02}}
+#
+# tr = transport(fracs, 0.013, 7, 0.42, 13.6, 900, twod=True)
+# print(tr)
