@@ -140,7 +140,7 @@ def main():
     count_to_prop(args.count_in, args.grain_size_col, args.fine_frac)
 
 
-#if __name__ == '__main__':
-#    main()
+if __name__ == '__main__':
+   main()
 
-count_to_prop('/media/jordan/Elements/Geoscience/Bitterroot/transport_datasets/valley_d.csv', 'D', 0.05)
+# count_to_prop('../Input_data/woods_generated2.csv', 'D')

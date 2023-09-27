@@ -168,8 +168,8 @@ def main():
     count_to_prop(args.count_in, args.grain_size_col, args.min_vals)
 
 
-#if __name__ == '__main__':
-#    main()
+if __name__ == '__main__':
+   main()
 
-count_to_prop('/media/jordan/Elements/Geoscience/Bitterroot/transport_datasets/fourthofjuly_d.csv', 'D',
-              {-1: 0.01, 0: 0.01, 1: 0.01, 2: 0.01})
+# count_to_prop('../Input_data/Blodgett_D.csv', 'D',
+#               {-1: 0.01, 0: 0.01, 1: 0.01, 2: 0.01})

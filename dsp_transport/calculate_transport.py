@@ -1,5 +1,6 @@
 import argparse
 import numpy as np
+from math import floor
 from scipy.optimize import minimize
 
 
@@ -16,7 +17,7 @@ def ferguson_vpe(h, d84, s):  # could maybe strip depth out of this and just giv
     return v_est
 
 def calc_hi(d, q, h, d84, s, w):
-    v0 = ferguson_vpe(h, d84, s)*3
+    v0 = ferguson_vpe(h, d84, s)*2
 
     res = minimize(err, v0, args=(d, q, s, w))
     if res.x[0] <= 0.01:
@@ -62,6 +63,27 @@ def transport(fractions: dict, slope:float, discharge: float, depth: float, widt
     :return: A dictionary with transport rate and total transport for each size fraction
     """
 
+    minimum_mass = {
+        1: 1.73442094416937E-07,
+        0: 1.38753675533549E-06,
+        -1: 1.11002940426839E-05,
+        -2: 8.88023523414715E-05,
+        -2.5: 0.000251170982104,
+        -3: 0.000710418818732,
+        -3.5: 0.002009367856831,
+        -4: 0.005683350549854,
+        - 4.5: 0.016074942854649,
+        -5: 0.045466804398833,
+        -5.5: 0.12859954283719,
+        -6: 0.363734435190667,
+        -6.5: 1.02879634269752,
+        -7: 2.90987548152534,
+        -7.5: 8.23037074158015,
+        -8: 23.2790038522027,
+        -8.5: 65.8429659326412,
+        - 9: 186.232030817622
+    }
+
     if twod is False:
         transport_rates = {}
     else:
@@ -91,10 +113,10 @@ def transport(fractions: dict, slope:float, discharge: float, depth: float, widt
     for key, value in fractionss.items():
         fractionssub[key] = tmp_vals[key] / denom
 
-    updatekeys = [1,0,-1]
-    update_val = fractionssub[1] + fractionssub[0] + fractionssub[-1]
-    for i in updatekeys:
-        fractionssub[i] = update_val
+    # updatekeys = [1,0,-1]
+    # update_val = fractionssub[1] + fractionssub[0] + fractionssub[-1]
+    # for i in updatekeys:
+    #     fractionssub[i] = update_val
 
     for size_phi, frac in fractionssub.items():
         size = 2**-size_phi / 1000
@@ -106,7 +128,7 @@ def transport(fractions: dict, slope:float, discharge: float, depth: float, widt
         h_i = calc_hi(size, discharge, depth, d84, slope, width)
 
         if lwd_factor is None:
-            tau_star_crit = tau_star_coef * (size / d50) ** -0.67
+            tau_star_crit = max(tau_star_coef * (size / d50) ** -0.67, 0.03)
         elif lwd_factor == 1:
             tau_star_crit = (tau_star_coef * (size / d50) ** -0.67) + 0.01
         elif lwd_factor == 2:
@@ -118,7 +140,7 @@ def transport(fractions: dict, slope:float, discharge: float, depth: float, widt
 
         if twod is False:
             ratio = tau_star / tau_star_crit
-            min_ratio = (0.02 * (size / d50) ** -0.67) / tau_star_crit
+            min_ratio = (0.025 * (size / d50) ** -0.67) / tau_star_crit
             if ratio < min_ratio:
                 ratio = 0
             if ratio < 2:
@@ -129,7 +151,8 @@ def transport(fractions: dict, slope:float, discharge: float, depth: float, widt
             # convert from wi_star to qs
             q_b_vol = (wi_star * frac * (9.81 * depth * slope) ** (3 / 2)) / (1.65 * 9.81)
             q_b_mass = q_b_vol * 2650
-            Qb = q_b_mass * width
+            Qb = floor((q_b_mass * width) / minimum_mass[size_phi]) * minimum_mass[size_phi]
+            q_b_mass = Qb / width
             tot = Qb * interval
 
             transport_rates[size_phi] = [q_b_mass, tot]
@@ -151,7 +174,8 @@ def transport(fractions: dict, slope:float, discharge: float, depth: float, widt
             # convert from wi_star to qs
             q_b_bed_vol = (wi_star_bed * frac * (9.81 * depth * slope) ** (3 / 2)) / (1.65 * 9.81)
             q_b_bed_mass = q_b_bed_vol * 2650
-            Qb_bed = q_b_bed_mass * width
+            Qb_bed = floor((q_b_bed_mass * width) / minimum_mass[size_phi]) * minimum_mass[size_phi]
+            q_b_bed_mass = Qb_bed / width
             tot_bed = Qb_bed * interval
 
             ratio_wall = tau_wall / tau_star_crit
@@ -163,7 +187,8 @@ def transport(fractions: dict, slope:float, discharge: float, depth: float, widt
             # convert from wi_star to qs
             q_b_wall_vol = (wi_star_wall * fractions['wall'][size_phi] * (9.81 * depth * slope) ** (3 / 2)) / (1.65 * 9.81)
             q_b_wall_mass = q_b_wall_vol * 2650
-            Qb_wall = q_b_wall_mass * (2 * depth)
+            Qb_wall = floor((q_b_wall_mass * (2 * depth)) / minimum_mass[size_phi]) * minimum_mass[size_phi]
+            q_b_wall_mass = Qb_wall / (2 * depth)
             tot_wall = Qb_wall * interval
 
             transport_rates['bed'].update({size_phi: [q_b_bed_mass, tot_bed]})
