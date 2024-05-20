@@ -341,10 +341,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
-#si = 'Blodgett'
-#slope = 0.013
-#inter = 900
-#
-#FractionalTransport(si, slope, inter, minimum_fraction=0.02)
